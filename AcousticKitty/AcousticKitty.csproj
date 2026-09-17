@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+	<PropertyGroup>
+		<Version>0.0.3.0</Version>
+		<!-- Manifest fields -->
+		<Author>Sunnie Sunday</Author>
+		<Name>Acoustic Kitty</Name>
+		<Punchline>Counterintelligence plugin.</Punchline>
+		<Description>Cross-references nearby in-game characters against their Lodestone profile.</Description>
+		<RepoUrl>https://github.com/sunnie-sunday/AcousticKitty</RepoUrl>
+		<Tags>Lodestone;Character;Profile</Tags>
+		<!-- Only used for a real (non-dev) install. -->
+		<IconUrl>https://raw.githubusercontent.com/sunnie-sunday/AcousticKitty/main/images/icon.png</IconUrl>
+		<!-- The game (and Dalamud itself) is always a Windows x64 binary, even when run under Wine/Proton on Linux -->
+		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+		<SelfContained>false</SelfContained>
+		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="HtmlAgilityPack" Version="1.13.0" />
+		<PackageReference Include="sqlite-net-pcl" Version="1.11.285" />
+		<PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
+		<PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
+		<PackageReference Include="JsonSchema.Net" Version="9.4.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- icon.png (native 64x64, matching the exact size Dalamud's plugin installer renders it at)
+		For a locally-loaded dev plugin, Dalamud looks for a local file at exactly this path next to the DLL. -->
+		<Content Include="..\images\icon.png" Link="images\icon.png">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<!-- logo.png (native 96x96, matching our own in-window sidebar so it renders without scaling. -->
+		<Content Include="..\images\logo.png" Link="images\logo.png">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<!-- NekoScan's PCs JSON Schema file, included at the root next to the DLL. -->
+		<Content Include="..\schemas\pcs.schema.json" Link="pcs.schema.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<!-- Sunnie Sunday Report log frontmatter schema, included at the root next to the DLL. -->
+		<Content Include="..\schemas\log.schema.json" Link="log.schema.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+</Project>

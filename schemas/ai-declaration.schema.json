@@ -1,0 +1,58 @@
+{
+	"additionalProperties": false,
+	"properties": {
+		"version": {
+			"pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+			"title": "Version",
+			"type": "string"
+		},
+		"level": {
+			"enum": [
+				"none",
+				"hint",
+				"assist",
+				"pair",
+				"copilot",
+				"auto"
+			],
+			"title": "Level",
+			"type": "string"
+		},
+		"processes": {
+			"anyOf": [
+				{
+					"additionalProperties": {
+						"type": "string"
+					},
+					"type": "object"
+				},
+				{
+					"type": "null"
+				}
+			],
+			"default": null,
+			"title": "Processes"
+		},
+		"components": {
+			"anyOf": [
+				{
+					"additionalProperties": {
+						"type": "string"
+					},
+					"type": "object"
+				},
+				{
+					"type": "null"
+				}
+			],
+			"default": null,
+			"title": "Components"
+		}
+	},
+	"required": [
+		"version",
+		"level"
+	],
+	"title": "Frontmatter",
+	"type": "object"
+}

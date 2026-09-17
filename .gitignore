@@ -1,4 +1,14 @@
+# SamplePlugin
 .vs/
 obj/
 bin/
 *.user
+
+# GIMP
+*.xcf
+
+# md2html
+*.html
+
+# bash
+*.sh

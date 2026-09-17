@@ -1,0 +1,12 @@
+# Normalize line endings to LF
+* text=auto eol=lf
+
+# Known binary types
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.dll binary
+*.pdb binary
+*.zip binary
+*.xcf binary

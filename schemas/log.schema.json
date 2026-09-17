@@ -1,0 +1,83 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://raw.githubusercontent.com/sunnie-sunday/report/refs/heads/main/schemas/log.schema.json",
+	"title": "Character Log",
+	"description": "YAML frontmatter of a character log with an \"already_claimed\" HTTP response.",
+	"type": "object",
+	"additionalProperties": false,
+	"required": [
+		"name",
+		"world",
+		"seen",
+		"utc",
+		"job",
+		"level",
+		"lodestone_id"
+	],
+	"properties": {
+		"name": {
+			"type": "string",
+			"minLength": 5,
+			"maxLength": 31,
+			"description": "The character's current display name."
+		},
+		"world": {
+			"type": "string",
+			"minLength": 1,
+			"description": "The character's Home World name."
+		},
+		"avatar_url": {
+			"type": "string",
+			"format": "uri",
+			"description": "The character's resolved avatar image URL."
+		},
+		"seen": {
+			"type": "string",
+			"pattern": "^.+@.+$",
+			"description": "\"{TerritoryName}@{CurrentWorldName}\" - the zone and world the character was last seen in."
+		},
+		"utc": {
+			"type": "string",
+			"format": "date-time",
+			"description": "UTC instant the character was last seen."
+		},
+		"title": {
+			"type": "string",
+			"description": "The character's title (optional)."
+		},
+		"job": {
+			"type": "string",
+			"minLength": 3,
+			"maxLength": 3,
+			"description": "The character's class/job 3-letter abbreviation (e.g. \"GNB\")."
+		},
+		"level": {
+			"type": "integer",
+			"minimum": 1,
+			"maximum": 100,
+			"description": "The character's current level for the class/job."
+		},
+		"lodestone_id": {
+			"type": "string",
+			"pattern": "^[0-9]+$",
+			"description": "The character's permanent Lodestone ID."
+		},
+		"fc_name": {
+			"type": "string",
+			"description": "The character's Free Company's full display name (optional)."
+		},
+		"fc_lodestone_id": {
+			"type": "string",
+			"pattern": "^[0-9]+$",
+			"description": "The character's Free Company's Lodestone ID (optional)."
+		},
+		"aka": {
+			"type": "string",
+			"description": "Comma-separated list of known \"Name@World\" pairs."
+		},
+		"transfers": {
+			"type": "string",
+			"description": "Comma-separated list of known Home World Transfer Service uses (optional)."
+		}
+	}
+}

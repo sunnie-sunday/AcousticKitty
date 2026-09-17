@@ -1,0 +1,88 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://raw.githubusercontent.com/sunnie-sunday/NekoScan/refs/heads/main/schemas/pcs.schema.json",
+	"title": "NekoScan PCs",
+	"description": "Snapshots of nearby PlayerCharacter objects from the NekoScan v2 plugin.",
+	"type": "array",
+	"items": {
+		"$ref": "#/$defs/PlayerCharacter"
+	},
+	"$defs": {
+		"PlayerCharacter": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"ContentId",
+				"Name",
+				"HomeWorldId",
+				"CurrentWorldId",
+				"TerritoryId",
+				"JobId",
+				"Level",
+				"FCTag",
+				"Gender",
+				"TimeSeenUtc",
+				"TitleId"
+			],
+			"properties": {
+				"ContentId": {
+					"type": "integer",
+					"minimum": 18014000000000000,
+					"maximum": 18014999999999999,
+					"description": "The character's permanent, unique in-game identifier Content ID."
+				},
+				"Name": {
+					"type": "string",
+					"minLength": 5,
+					"maxLength": 31,
+					"description": "The character's current display name. Legacy 1.0 characters can have up to two 15-letter names."
+				},
+				"HomeWorldId": {
+					"type": "integer",
+					"minimum": 1,
+					"description": "The World ID of the character's Home World."
+				},
+				"CurrentWorldId": {
+					"type": "integer",
+					"minimum": 1,
+					"description": "The World ID where the character was seen - may differ from HomeWorldId (e.g. World Visit)."
+				},
+				"TerritoryId": {
+					"type": "integer",
+					"minimum": 0,
+					"description": "The TerritoryType ID of the zone the character was last seen in."
+				},
+				"JobId": {
+					"type": "integer",
+					"minimum": 0,
+					"description": "The ClassJob ID of the character's current class/job."
+				},
+				"Level": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 100,
+					"description": "The character's current level for JobId."
+				},
+				"FCTag": {
+					"type": "string",
+					"description": "The character's Free Company tag, without the surrounding « » guillemets. Empty string when none or unknown."
+				},
+				"Gender": {
+					"type": "string",
+					"enum": ["M", "F"],
+					"description": "Read from the native customize data's Sex byte: 0 maps to \"M\", anything else to \"F\"."
+				},
+				"TimeSeenUtc": {
+					"type": "string",
+					"format": "date-time",
+					"description": "UTC instant this character was observed, ISO 8601 with offset - e.g. \"2026-08-31T12:00:00.123Z\"."
+				},
+				"TitleId": {
+					"type": "integer",
+					"minimum": 0,
+					"description": "The Title ID of the character's equipped title. 0 means no title."
+				}
+			}
+		}
+	}
+}
