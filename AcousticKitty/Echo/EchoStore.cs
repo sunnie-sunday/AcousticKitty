@@ -104,6 +104,15 @@ public sealed class EchoStore : IDisposable
 		}
 	}
 
+	public IReadOnlyDictionary<string, DateTime> GetAllVerified()
+	{
+		lock (this.gate)
+		{
+			return this.connection.Table<VerifiedRow>()
+				.ToDictionary(row => row.Key, row => UtcTimestamp.Parse(row.VerifiedAtUtc));
+		}
+	}
+
 	public void DeleteVerified(IEnumerable<string> keys)
 	{
 		var keyList = keys.ToList();
