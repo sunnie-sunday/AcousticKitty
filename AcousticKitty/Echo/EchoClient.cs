@@ -343,7 +343,7 @@ public sealed class EchoClient : IEchoClient
 		byte[] requestBodyBytes,
 		HttpResponseMessage response,
 		byte[] responseBodyBytes) =>
-		log.Verbose(
+		log.Debug(
 			$"Echo {request.Method} {request.RequestUri!.PathAndQuery} -> " +
 			$"{(int)response.StatusCode} {response.ReasonPhrase}\n" +
 			$"Request body: {Encoding.UTF8.GetString(requestBodyBytes)}\n" +

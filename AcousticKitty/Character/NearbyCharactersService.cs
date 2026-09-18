@@ -361,7 +361,18 @@ public sealed partial class NearbyCharactersService : IDisposable
 		{
 			while (true)
 			{
-				var pending = this.characterDirectory.GetPending();
+				IReadOnlyList<KnownCharacter> pending;
+				try
+				{
+					pending = this.characterDirectory.GetPending();
+				}
+				catch (Exception ex)
+				{
+					this.log.Error(ex, "Failed to read the Lodestone queue; retrying shortly.");
+					await Task.Delay(NoWorkPollInterval, this.drainStopCts.Token).ConfigureAwait(false);
+					continue;
+				}
+
 				if (pending.Count == 0)
 				{
 					await Task.Delay(NoWorkPollInterval, this.drainStopCts.Token).ConfigureAwait(false);

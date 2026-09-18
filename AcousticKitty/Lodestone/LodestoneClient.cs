@@ -229,7 +229,7 @@ public sealed class LodestoneClient(IPluginLog log)
 		}
 		finally
 		{
-			log.Verbose(
+			log.Debug(
 				$"Lodestone GET {url} -> {(int)response.StatusCode} {response.ReasonPhrase} " +
 				$"({stopwatch.ElapsedMilliseconds} ms)");
 		}

@@ -39,6 +39,7 @@ internal sealed class SettingsTab(Plugin plugin)
 		{
 			configuration.NearbySearchMode = NearbySearchMode.Auto;
 			configuration.Save();
+			plugin.NearbyCharactersService.RunSearchOnce();
 		}
 
 		ImGui.BeginDisabled();
@@ -67,6 +68,7 @@ internal sealed class SettingsTab(Plugin plugin)
 		{
 			configuration.EchoQueueMode = EchoQueueMode.Auto;
 			configuration.Save();
+			plugin.EchoService.StartQueue();
 		}
 
 		ImGui.BeginDisabled();

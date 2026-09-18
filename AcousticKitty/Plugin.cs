@@ -74,7 +74,7 @@ public sealed class Plugin : IDalamudPlugin
 			this.LodestoneClient, this.characterDirectory, DataManager, Log);
 		this.EchoClientFactory = new EchoClientFactory(this.Configuration, Log);
 		this.EchoService = new EchoService(
-			PlayerState,
+			Framework,
 			this.EchoClientFactory,
 			this.echoStore,
 			this.characterDirectory,

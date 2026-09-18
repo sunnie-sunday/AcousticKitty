@@ -36,7 +36,9 @@ public sealed class EchoService : IDisposable
 	private static readonly TimeSpan NoEligibleMatchPollInterval = TimeSpan.FromSeconds(1);
 	private static readonly TimeSpan SnapshotRebuildInterval = TimeSpan.FromSeconds(1);
 
-	private readonly IPlayerState playerState;
+	private static readonly TimeSpan AutoStartCheckInterval = TimeSpan.FromSeconds(5);
+
+	private readonly IFramework framework;
 	private readonly IEchoClientFactory clientFactory;
 	private readonly EchoStore echoStore;
 	private readonly CharacterDirectory characterDirectory;
@@ -47,6 +49,8 @@ public sealed class EchoService : IDisposable
 	private readonly IPluginLog log;
 	private readonly AlreadyPinnedLogWriter alreadyPinnedLogWriter;
 	private readonly CancellationTokenSource disposalCts = new();
+
+	private DateTime lastAutoStartCheckUtc = DateTime.MinValue;
 
 	private readonly Dictionary<ulong, DateTime> nextEligibleAtUtc = new();
 	private readonly Dictionary<ulong, int> consecutiveFailures = new();
@@ -63,7 +67,7 @@ public sealed class EchoService : IDisposable
 	#region Public API
 
 	public EchoService(
-		IPlayerState playerState,
+		IFramework framework,
 		IEchoClientFactory clientFactory,
 		EchoStore echoStore,
 		CharacterDirectory characterDirectory,
@@ -74,7 +78,7 @@ public sealed class EchoService : IDisposable
 		IPluginLog log,
 		string pluginConfigDirectory)
 	{
-		this.playerState = playerState;
+		this.framework = framework;
 		this.clientFactory = clientFactory;
 		this.echoStore = echoStore;
 		this.characterDirectory = characterDirectory;
@@ -84,6 +88,8 @@ public sealed class EchoService : IDisposable
 		this.configuration = configuration;
 		this.log = log;
 		this.alreadyPinnedLogWriter = new AlreadyPinnedLogWriter(pluginConfigDirectory);
+
+		this.framework.Update += this.OnFrameworkUpdate;
 
 		this.RebuildPendingSnapshot();
 		if (this.pendingSnapshot.Count > 0 && this.configuration.EchoQueueMode == EchoQueueMode.Auto)
@@ -151,6 +157,7 @@ public sealed class EchoService : IDisposable
 
 	public void Dispose()
 	{
+		this.framework.Update -= this.OnFrameworkUpdate;
 		this.disposalCts.Cancel();
 		this.disposalCts.Dispose();
 	}
@@ -158,6 +165,22 @@ public sealed class EchoService : IDisposable
 	#endregion
 
 	#region Private Implementation
+
+	private void OnFrameworkUpdate(IFramework unused)
+	{
+		var now = DateTime.UtcNow;
+		if (now - this.lastAutoStartCheckUtc < AutoStartCheckInterval)
+		{
+			return;
+		}
+
+		this.lastAutoStartCheckUtc = now;
+
+		if (!this.isProcessing && this.configuration.EchoQueueMode == EchoQueueMode.Auto)
+		{
+			_ = this.ProcessQueueAsync();
+		}
+	}
 
 	private void RebuildPendingSnapshot()
 	{
@@ -198,7 +221,18 @@ public sealed class EchoService : IDisposable
 					continue;
 				}
 
-				var candidates = this.GetUnverifiedMatches();
+				IReadOnlyList<PendingMatch> candidates;
+				try
+				{
+					candidates = this.GetUnverifiedMatches();
+				}
+				catch (Exception ex)
+				{
+					this.log.Error(ex, "Failed to read verification candidates; retrying shortly.");
+					await Task.Delay(NoEligibleMatchPollInterval, stopCts.Token).ConfigureAwait(false);
+					continue;
+				}
+
 				if (candidates.Count == 0)
 				{
 					this.state = EchoQueueState.Idle;
@@ -248,13 +282,6 @@ public sealed class EchoService : IDisposable
 
 	private async Task<TimeSpan?> TrySendAsync(PendingMatch match, CancellationToken cancellationToken)
 	{
-		if (!this.playerState.IsLoaded)
-		{
-			this.statusReason = "Waiting for a character to be logged in";
-			this.nextRetryUtc = DateTime.UtcNow + DefaultRetryAfter;
-			return DefaultRetryAfter;
-		}
-
 		try
 		{
 			var registerTranscript = new StringBuilder();
@@ -312,7 +339,7 @@ public sealed class EchoService : IDisposable
 			this.statusReason = "Rate-limited by the Echo API";
 			this.nextRetryUtc = DateTime.UtcNow + delay;
 			this.globalRetryAtUtc = this.nextRetryUtc;
-			this.log.Debug(ex, $"Echo API rate-limited verifying {match.CharacterName}");
+			this.log.Debug($"Echo API rate-limited verifying {match.CharacterName}: {ex.GetType()}: {ex.Message}");
 			return TimeSpan.Zero;
 		}
 		catch (EchoException ex)
@@ -320,7 +347,7 @@ public sealed class EchoService : IDisposable
 			this.statusReason = "Rejected by the Echo API";
 			var delay = this.RecordFailureAndGetBackoff(match.ContentId, DefaultRetryAfter);
 			this.nextRetryUtc = DateTime.UtcNow + delay;
-			this.log.Warning(ex, $"Echo API rejected verifying {match.CharacterName}");
+			this.log.Warning($"Echo API rejected verifying {match.CharacterName}: {ex.GetType()}: {ex.Message}");
 			return delay;
 		}
 		catch (Exception ex)
@@ -328,7 +355,7 @@ public sealed class EchoService : IDisposable
 			this.statusReason = "The Echo API is unreachable";
 			var delay = this.RecordFailureAndGetBackoff(match.ContentId, ApiDownRetryDelay);
 			this.nextRetryUtc = DateTime.UtcNow + delay;
-			this.log.Warning(ex, $"Echo API unreachable verifying {match.CharacterName}");
+			this.log.Warning($"Echo API unreachable verifying {match.CharacterName}: {ex.GetType()}: {ex.Message}");
 			return delay;
 		}
 	}
