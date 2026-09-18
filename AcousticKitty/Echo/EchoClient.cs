@@ -56,6 +56,12 @@ public sealed class EchoClientFactory(Configuration configuration, IPluginLog lo
 
 public sealed class EchoClient : IEchoClient
 {
+	internal const string ApiHost = "localhost";
+
+	internal const string PluginVersion = "0.0.1";
+
+	internal const int ProtocolVersion = 2;
+
 	private static readonly JsonSerializerOptions JsonOptions = new()
 	{
 		PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -82,8 +88,7 @@ public sealed class EchoClient : IEchoClient
 	public async Task<EchoRegistration> RegisterAsync(
 		CancellationToken cancellationToken, StringBuilder? transcript = null)
 	{
-		var body = new RegisterRequest(
-			this.configuration.EchoProtocolVersion, this.configuration.EchoPluginVersion);
+		var body = new RegisterRequest(EchoClient.ProtocolVersion, EchoClient.PluginVersion);
 		var bodyBytes = JsonSerializer.SerializeToUtf8Bytes(body, JsonOptions);
 
 		using var request = new HttpRequestMessage(HttpMethod.Post, this.BuildUri("/v1/auth/register"))
@@ -107,7 +112,7 @@ public sealed class EchoClient : IEchoClient
 		EchoRegistration registration, CancellationToken cancellationToken)
 	{
 		var body = new SessionRequest(
-			this.configuration.EchoProtocolVersion, registration.UploaderId, registration.ApiKey);
+			EchoClient.ProtocolVersion, registration.UploaderId, registration.ApiKey);
 		using var response = await this
 			.SendSignedAsync("/v1/auth/session", registration, body, cancellationToken)
 			.ConfigureAwait(false);
@@ -126,7 +131,7 @@ public sealed class EchoClient : IEchoClient
 		StringBuilder? transcript = null)
 	{
 		var body = new SavedRequest(
-			this.configuration.EchoProtocolVersion,
+			EchoClient.ProtocolVersion,
 			lodestoneId.ToString(CultureInfo.InvariantCulture),
 			characterName,
 			homeWorldName,
@@ -407,7 +412,7 @@ public sealed class EchoClient : IEchoClient
 
 	private Uri BuildUri(string path)
 	{
-		var host = this.configuration.EchoApiHost;
+		var host = EchoClient.ApiHost;
 		var baseUrl = host.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
 			|| host.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
 			? host

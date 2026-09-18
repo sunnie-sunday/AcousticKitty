@@ -24,24 +24,62 @@ internal sealed class SettingsTab(Plugin plugin)
 	{
 		var configuration = plugin.Configuration;
 
-		ImGui.TextUnformatted("Lodestone connection");
+		ImGui.TextUnformatted("Lodestone queue mode");
+		ImGui.Spacing();
 
-		var userAgentBuffer = configuration.LodestoneUserAgent;
-		if (ImGui.InputText("User-Agent", ref userAgentBuffer, 256))
+		if (ImGui.RadioButton(
+			"Manual", configuration.NearbySearchMode == NearbySearchMode.Manual))
 		{
-			configuration.LodestoneUserAgent = userAgentBuffer;
+			configuration.NearbySearchMode = NearbySearchMode.Manual;
+			configuration.Save();
+		}
+
+		ImGui.SameLine();
+		if (ImGui.RadioButton("Auto", configuration.NearbySearchMode == NearbySearchMode.Auto))
+		{
+			configuration.NearbySearchMode = NearbySearchMode.Auto;
 			configuration.Save();
 		}
 
 		ImGui.BeginDisabled();
 		ImGui.TextWrapped(
-			"Sent only to the Lodestone, never to the Echo API below. Left blank, falls back to " +
-			$"\"{Configuration.DefaultLodestoneUserAgent}\".");
+			"Manual looks up characters when using \"Start Lodestone queue\" on the Queue tab.");
+		ImGui.TextWrapped("Auto looks up every nearby player passively in the background.");
 		ImGui.EndDisabled();
 
 		ImGui.Spacing();
+		ImGui.Separator();
+		ImGui.Spacing();
 
-		ImGui.TextUnformatted("Echo API connection");
+		ImGui.TextUnformatted("Echo queue mode");
+		ImGui.Spacing();
+
+		if (ImGui.RadioButton(
+			"Manual##EchoQueueMode", configuration.EchoQueueMode == EchoQueueMode.Manual))
+		{
+			configuration.EchoQueueMode = EchoQueueMode.Manual;
+			configuration.Save();
+		}
+
+		ImGui.SameLine();
+		if (ImGui.RadioButton(
+			"Auto##EchoQueueMode", configuration.EchoQueueMode == EchoQueueMode.Auto))
+		{
+			configuration.EchoQueueMode = EchoQueueMode.Auto;
+			configuration.Save();
+		}
+
+		ImGui.BeginDisabled();
+		ImGui.TextWrapped(
+			"Manual verifies confirmed matches when using \"Start Echo queue\" on the Queue tab.");
+		ImGui.TextWrapped("Auto verifies every confirmed match automatically in the background.");
+		ImGui.EndDisabled();
+
+		ImGui.Spacing();
+		ImGui.Separator();
+		ImGui.Spacing();
+
+		ImGui.TextUnformatted("Echo connection mode");
 		SettingsTab.DrawProxyModeRadio(
 			"##EchoProxyMode",
 			configuration.EchoProxyMode,
@@ -64,6 +102,7 @@ internal sealed class SettingsTab(Plugin plugin)
 
 		var usesProxy = configuration.EchoProxyMode == ProxyMode.Socks5;
 
+		ImGui.TextUnformatted("Echo proxy settings");
 		ImGui.TextWrapped("SOCKS5 proxy (Echo API only - Lodestone traffic always connects direct)");
 		ImGui.Spacing();
 
@@ -92,87 +131,6 @@ internal sealed class SettingsTab(Plugin plugin)
 		{
 			ImGui.EndDisabled();
 		}
-
-		ImGui.Spacing();
-		ImGui.Separator();
-		ImGui.Spacing();
-
-		ImGui.TextWrapped("Echo API");
-		ImGui.Spacing();
-
-		ImGui.BeginDisabled();
-		var apiHostBuffer = configuration.EchoApiHost;
-		ImGui.InputText("API host", ref apiHostBuffer, 256);
-		var protocolVersionBuffer = configuration.EchoProtocolVersion.ToString();
-		ImGui.InputText(
-			"API protocol version", ref protocolVersionBuffer, 6, ImGuiInputTextFlags.CharsDecimal);
-		ImGui.EndDisabled();
-
-		ImGui.Spacing();
-
-		var pluginVersionBuffer = configuration.EchoPluginVersion;
-		if (ImGui.InputText("API plugin version", ref pluginVersionBuffer, 32))
-		{
-			configuration.EchoPluginVersion = pluginVersionBuffer;
-			configuration.Save();
-		}
-
-		ImGui.Spacing();
-		ImGui.Separator();
-		ImGui.Spacing();
-
-		ImGui.TextWrapped("Choose how the Queue tab resolves nearby players on the Lodestone.");
-		ImGui.Spacing();
-
-		if (ImGui.RadioButton(
-			"Manual", configuration.NearbySearchMode == NearbySearchMode.Manual))
-		{
-			configuration.NearbySearchMode = NearbySearchMode.Manual;
-			configuration.Save();
-		}
-
-		ImGui.SameLine();
-		if (ImGui.RadioButton("Auto", configuration.NearbySearchMode == NearbySearchMode.Auto))
-		{
-			configuration.NearbySearchMode = NearbySearchMode.Auto;
-			configuration.Save();
-		}
-
-		ImGui.BeginDisabled();
-		ImGui.TextWrapped(
-			"Manual looks up characters when using \"Start Lodestone queue\" on the Queue tab.");
-		ImGui.TextWrapped("Auto looks up every nearby player passively in the background.");
-		ImGui.EndDisabled();
-
-		ImGui.Spacing();
-		ImGui.Separator();
-		ImGui.Spacing();
-
-		ImGui.TextWrapped(
-			"Choose how the Queue tab verifies confirmed matches with the Echo API - independent " +
-			"of the Lodestone lookup mode above.");
-		ImGui.Spacing();
-
-		if (ImGui.RadioButton(
-			"Manual##EchoQueueMode", configuration.EchoQueueMode == EchoQueueMode.Manual))
-		{
-			configuration.EchoQueueMode = EchoQueueMode.Manual;
-			configuration.Save();
-		}
-
-		ImGui.SameLine();
-		if (ImGui.RadioButton(
-			"Auto##EchoQueueMode", configuration.EchoQueueMode == EchoQueueMode.Auto))
-		{
-			configuration.EchoQueueMode = EchoQueueMode.Auto;
-			configuration.Save();
-		}
-
-		ImGui.BeginDisabled();
-		ImGui.TextWrapped(
-			"Manually verifies confirmed matches when using \"Start Echo queue\" on the Queue tab.");
-		ImGui.TextWrapped("Auto verifies every confirmed match automatically in the background.");
-		ImGui.EndDisabled();
 	}
 
 	private static void DrawProxyModeRadio(

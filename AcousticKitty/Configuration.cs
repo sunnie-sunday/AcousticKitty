@@ -16,12 +16,6 @@ public sealed class Configuration : IPluginConfiguration
 {
 	public int Version { get; set; } = 1;
 
-	public const string DefaultLodestoneUserAgent =
-		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
-		"Chrome/152.0.0.0 Safari/537.36 Edg/152.0.4191.66";
-
-	public string LodestoneUserAgent { get; set; } = DefaultLodestoneUserAgent;
-
 	public ProxyMode EchoProxyMode { get; set; } = ProxyMode.Socks5;
 
 	public string EchoProxyHost { get; set; } = "localhost";
@@ -38,12 +32,6 @@ public sealed class Configuration : IPluginConfiguration
 		get => DpapiProtector.Unprotect(this.EchoProxyEncryptedPassword);
 		set => this.EchoProxyEncryptedPassword = DpapiProtector.Protect(value);
 	}
-
-	public string EchoApiHost { get; set; } = "http://localhost";
-
-	public string EchoPluginVersion { get; set; } = "0.0.1";
-
-	public int EchoProtocolVersion { get; set; } = 2;
 
 	public NearbySearchMode NearbySearchMode { get; set; } = NearbySearchMode.Manual;
 

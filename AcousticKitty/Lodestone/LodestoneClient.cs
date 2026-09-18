@@ -56,10 +56,14 @@ public interface ILodestoneClient
 
 #endregion
 
-public sealed class LodestoneClient(Configuration configuration, IPluginLog log)
+public sealed class LodestoneClient(IPluginLog log)
 	: ILodestoneClient, IDisposable
 {
 	private const string Host = "na.finalfantasyxiv.com";
+
+	private const string UserAgent =
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+		"Chrome/152.0.0.0 Safari/537.36 Edg/152.0.4191.66";
 
 	private readonly RateLimiter rateLimiter = new(TimeSpan.FromSeconds(1));
 
@@ -238,16 +242,13 @@ public sealed class LodestoneClient(Configuration configuration, IPluginLog log)
 			return this.cachedClient;
 		}
 
-		var userAgent = string.IsNullOrWhiteSpace(configuration.LodestoneUserAgent)
-			? Configuration.DefaultLodestoneUserAgent
-			: configuration.LodestoneUserAgent;
 		var handler = new SocketsHttpHandler
 		{
 			AutomaticDecompression = DecompressionMethods.All,
 			ConnectTimeout = TimeSpan.FromSeconds(15),
 		};
 		var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
-		client.DefaultRequestHeaders.UserAgent.ParseAdd(userAgent);
+		client.DefaultRequestHeaders.UserAgent.ParseAdd(LodestoneClient.UserAgent);
 		client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en-US,en;q=0.9");
 
 		this.cachedClient = client;

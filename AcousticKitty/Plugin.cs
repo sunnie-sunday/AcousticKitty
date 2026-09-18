@@ -69,7 +69,7 @@ public sealed class Plugin : IDalamudPlugin
 	{
 		this.Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 
-		this.LodestoneClient = new LodestoneClient(this.Configuration, Log);
+		this.LodestoneClient = new LodestoneClient(Log);
 		this.lodestoneCache = new LodestoneCache(PluginInterface.ConfigDirectory.FullName);
 		this.echoStore = new EchoStore(PluginInterface.ConfigDirectory.FullName, Log);
 		this.characterDirectory =
