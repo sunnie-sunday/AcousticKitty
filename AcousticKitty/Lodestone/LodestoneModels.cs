@@ -22,6 +22,25 @@ public sealed record LodestoneProfile(
 	uint? JobId = null,
 	int? Level = null);
 
+public enum SocialGroupKind
+{
+	FreeCompany,
+	Linkshell,
+	CrossWorldLinkshell,
+	PvpTeam,
+}
+
+public enum GroupSearchMode
+{
+	Name,
+	Id,
+}
+
+public sealed record GroupSearchResult(
+	string Id, string Name, uint? WorldId, uint DataCenterId, IReadOnlyList<string> IconUrls);
+
+public sealed record GroupRoster(string? FreeCompanyName, IReadOnlyList<MemberListEntry> Members);
+
 public sealed record CachedProfileEntry(
 	string Key, Lazy<LodestoneProfile> Profile, DateTime FetchedAtUtc);
 

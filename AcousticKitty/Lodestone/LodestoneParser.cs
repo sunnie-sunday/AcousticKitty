@@ -110,6 +110,109 @@ public static class LodestoneParser
 		return null;
 	}
 
+	public static IReadOnlyList<GroupSearchResult> ParseGroupSearchResults(
+		IDataManager dataManager,
+		string html,
+		SocialGroupKind kind)
+	{
+		var (anchorClass, boxClass, urlSegment) = kind switch
+		{
+			SocialGroupKind.FreeCompany => ("entry__block", "entry__freecompany__box", "freecompany"),
+			SocialGroupKind.PvpTeam => ("entry__block", "entry__freecompany__box", "pvpteam"),
+			SocialGroupKind.Linkshell => ("entry__link--line", "entry__linkshell", "linkshell"),
+			SocialGroupKind.CrossWorldLinkshell =>
+				("entry__link--line", "entry__linkshell", "crossworld_linkshell"),
+			_ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+		};
+
+		var sharedIconUrl = kind switch
+		{
+			SocialGroupKind.Linkshell => LinkshellIconUrl,
+			SocialGroupKind.CrossWorldLinkshell => CrossWorldLinkshellIconUrl,
+			_ => null,
+		};
+
+		var doc = new HtmlDocument();
+		doc.LoadHtml(html);
+
+		var entryLinks = doc.DocumentNode.SelectNodes(
+			$"//div[{HasClass("entry")}]/a[{HasClass(anchorClass)}]");
+		if (entryLinks == null)
+		{
+			return Array.Empty<GroupSearchResult>();
+		}
+
+		var results = new List<GroupSearchResult>(entryLinks.Count);
+		foreach (var entry in entryLinks)
+		{
+			var nameNode = entry.SelectSingleNode(
+				$".//div[{HasClass(boxClass)}]/p[{HasClass("entry__name")}]");
+			var worldNodes = entry.SelectNodes(
+				$".//div[{HasClass(boxClass)}]/p[{HasClass("entry__world")}]");
+			if (nameNode == null || worldNodes == null || worldNodes.Count == 0)
+			{
+				continue;
+			}
+
+			var candidateWorldTexts = worldNodes
+				.Select(n => CleanText(n.InnerText) ?? string.Empty)
+				.ToList();
+			var worldText = candidateWorldTexts.FirstOrDefault(t => WorldDataCenterRegex.IsMatch(t))
+				?? candidateWorldTexts[^1];
+
+			var href = entry.GetAttributeValue("href", string.Empty);
+			var segments = href.Split('/', StringSplitOptions.RemoveEmptyEntries);
+			var groupIndex = Array.IndexOf(segments, urlSegment);
+			if (groupIndex < 0 || groupIndex + 1 >= segments.Length)
+			{
+				continue;
+			}
+
+			var name = CleanText(nameNode.InnerText) ?? string.Empty;
+			var (world, dataCenterText) = SplitGroupWorldOrDataCenter(worldText);
+			var worldId = world != null
+				? GameDataResolver.TryResolveWorldId(dataManager, world)
+					?? throw new LodestoneDataResolutionException(world)
+				: (uint?)null;
+			var dataCenterId = GameDataResolver.TryResolveDataCenterId(dataManager, dataCenterText)
+				?? throw new LodestoneDataResolutionException(dataCenterText);
+			IReadOnlyList<string> iconUrls = sharedIconUrl != null
+				? new[] { sharedIconUrl }
+				: ParseGroupCrestLayers(entry, kind);
+			results.Add(new GroupSearchResult(
+				segments[groupIndex + 1], name, worldId, dataCenterId, iconUrls));
+		}
+
+		return results;
+	}
+
+	public static int ParsePageCount(string html)
+	{
+		var doc = new HtmlDocument();
+		doc.LoadHtml(html);
+
+		var pagerText = doc.DocumentNode
+			.SelectSingleNode($"//li[{HasClass("btn__pager__current")}]")
+			?.InnerText;
+		if (pagerText == null)
+		{
+			return 1;
+		}
+
+		var match = Regex.Match(pagerText, @"of\s+(\d+)");
+		return match.Success && int.TryParse(match.Groups[1].Value, out var totalPages)
+			? totalPages
+			: 1;
+	}
+
+	public static string? ParseFreeCompanyName(string html)
+	{
+		var doc = new HtmlDocument();
+		doc.LoadHtml(html);
+
+		return CleanText(SelectText(doc.DocumentNode, $"//p[{HasClass("entry__freecompany__name")}]"));
+	}
+
 	public static LodestoneProfile ParseProfile(
 		IDataManager dataManager,
 		string profileHtml,
@@ -225,6 +328,36 @@ public static class LodestoneParser
 
 	private static string HasClass(string className) =>
 		$"contains(concat(' ', normalize-space(@class), ' '), ' {className} ')";
+
+	private const string LinkshellIconUrl =
+		"https://lds-img.finalfantasyxiv.com/h/J/sdHWnoNaGTGn6iGfhTZVBf4Y3Q.png";
+	private const string CrossWorldLinkshellIconUrl =
+		"https://lds-img.finalfantasyxiv.com/h/5/4_6qlZUYui4tW5ktSgjd-uYbxk.png";
+
+	private static IReadOnlyList<string> ParseGroupCrestLayers(HtmlNode entry, SocialGroupKind kind)
+	{
+		var (baseClass, layerClass) = kind == SocialGroupKind.PvpTeam
+			? ("entry__pvpteam__search__crest__base", "entry__pvpteam__search__crest__image")
+			: ("entry__freecompany__crest__base", "entry__freecompany__crest__image");
+
+		var layers = new List<string>();
+		var baseUrl = entry.SelectSingleNode($".//img[{HasClass(baseClass)}]")
+			?.GetAttributeValue("src", null);
+		if (baseUrl != null)
+		{
+			layers.Add(baseUrl);
+		}
+
+		var layerNodes = entry.SelectNodes($".//div[{HasClass(layerClass)}]/img");
+		if (layerNodes != null)
+		{
+			layers.AddRange(layerNodes
+				.Select(node => node.GetAttributeValue("src", null))
+				.Where(url => url != null)!);
+		}
+
+		return layers;
+	}
 
 	private static uint? ResolveOptionalId(string text, Func<string, uint?> resolve) =>
 		string.IsNullOrEmpty(text)
@@ -356,6 +489,14 @@ public static class LodestoneParser
 		return match.Success
 			? (match.Groups["world"].Value, match.Groups["dc"].Value)
 			: (worldText, string.Empty);
+	}
+
+	private static (string? World, string DataCenter) SplitGroupWorldOrDataCenter(string text)
+	{
+		var match = WorldDataCenterRegex.Match(text);
+		return match.Success
+			? (match.Groups["world"].Value, match.Groups["dc"].Value)
+			: (null, text);
 	}
 
 	private static string? SelectText(HtmlNode root, string xpath) =>

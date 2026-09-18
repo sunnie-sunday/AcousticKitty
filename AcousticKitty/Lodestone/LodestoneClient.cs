@@ -36,6 +36,21 @@ public interface ILodestoneClient
 		IDataManager dataManager,
 		CancellationToken cancellationToken);
 
+	Task<IReadOnlyList<GroupSearchResult>> SearchGroupAsync(
+		SocialGroupKind kind,
+		string name,
+		string? worldOrDataCenter,
+		IDataManager dataManager,
+		CancellationToken cancellationToken);
+
+	Task<GroupRoster> GetGroupRosterAsync(
+		SocialGroupKind kind,
+		string groupId,
+		int maxPages,
+		IDataManager dataManager,
+		Action<IReadOnlyList<MemberListEntry>, string?> onPageFetched,
+		CancellationToken cancellationToken);
+
 	Task<byte[]> GetAvatarBytesAsync(string avatarUrl, bool highPriority, CancellationToken cancellationToken);
 }
 
@@ -85,6 +100,73 @@ public sealed class LodestoneClient(Configuration configuration, IPluginLog log)
 		return LodestoneParser.ParseProfile(dataManager, html, lodestoneId);
 	}
 
+	public async Task<IReadOnlyList<GroupSearchResult>> SearchGroupAsync(
+		SocialGroupKind kind,
+		string name,
+		string? worldOrDataCenter,
+		IDataManager dataManager,
+		CancellationToken cancellationToken)
+	{
+		var url = $"https://{Host}/lodestone/{GetGroupUrlSegment(kind)}/" +
+			$"?q={Uri.EscapeDataString(name)}";
+		if (!string.IsNullOrWhiteSpace(worldOrDataCenter))
+		{
+			var paramName = kind is SocialGroupKind.CrossWorldLinkshell or SocialGroupKind.PvpTeam
+				? "dcname"
+				: "worldname";
+			url += $"&{paramName}={Uri.EscapeDataString($"_dc_{worldOrDataCenter}")}";
+		}
+
+		var html = await this.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
+		return LodestoneParser.ParseGroupSearchResults(dataManager, html, kind);
+	}
+
+	public async Task<GroupRoster> GetGroupRosterAsync(
+		SocialGroupKind kind,
+		string groupId,
+		int maxPages,
+		IDataManager dataManager,
+		Action<IReadOnlyList<MemberListEntry>, string?> onPageFetched,
+		CancellationToken cancellationToken)
+	{
+		var firstPageHtml = await this
+			.GetGroupMemberPageHtmlAsync(kind, groupId, 1, cancellationToken)
+			.ConfigureAwait(false);
+
+		var freeCompanyName = kind == SocialGroupKind.FreeCompany
+			? LodestoneParser.ParseFreeCompanyName(firstPageHtml)
+			: null;
+
+		var firstPageMembers = LodestoneParser.ParseMemberListEntries(dataManager, firstPageHtml);
+		var members = new List<MemberListEntry>(firstPageMembers);
+		onPageFetched(firstPageMembers, freeCompanyName);
+
+		var totalPages = Math.Min(LodestoneParser.ParsePageCount(firstPageHtml), maxPages);
+		for (var page = 2; page <= totalPages; page++)
+		{
+			var html = await this
+				.GetGroupMemberPageHtmlAsync(kind, groupId, page, cancellationToken)
+				.ConfigureAwait(false);
+			var pageMembers = LodestoneParser.ParseMemberListEntries(dataManager, html);
+			members.AddRange(pageMembers);
+			onPageFetched(pageMembers, freeCompanyName);
+		}
+
+		return new GroupRoster(freeCompanyName, members);
+	}
+
+	private Task<string> GetGroupMemberPageHtmlAsync(
+		SocialGroupKind kind,
+		string groupId,
+		int page,
+		CancellationToken cancellationToken)
+	{
+		var memberSegment = kind == SocialGroupKind.FreeCompany ? "member/" : string.Empty;
+		var url = $"https://{Host}/lodestone/{GetGroupUrlSegment(kind)}/{groupId}/" +
+			$"{memberSegment}?page={page}";
+		return this.GetStringAsync(url, cancellationToken);
+	}
+
 	public async Task<byte[]> GetAvatarBytesAsync(
 		string avatarUrl,
 		bool highPriority,
@@ -101,6 +183,15 @@ public sealed class LodestoneClient(Configuration configuration, IPluginLog log)
 	#endregion
 
 	#region Plumbing
+
+	private static string GetGroupUrlSegment(SocialGroupKind kind) => kind switch
+	{
+		SocialGroupKind.FreeCompany => "freecompany",
+		SocialGroupKind.Linkshell => "linkshell",
+		SocialGroupKind.CrossWorldLinkshell => "crossworld_linkshell",
+		SocialGroupKind.PvpTeam => "pvpteam",
+		_ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+	};
 
 	private async Task<string> GetStringAsync(string url, CancellationToken cancellationToken)
 	{

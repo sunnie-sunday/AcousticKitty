@@ -45,6 +45,31 @@ internal static class ProfileView
 		}
 	}
 
+	public static void DrawLayeredIcon(Plugin plugin, IReadOnlyList<string> iconUrls, float size)
+	{
+		var origin = ImGui.GetCursorScreenPos();
+		var drewAny = false;
+		foreach (var url in iconUrls)
+		{
+			var textureTask = plugin.AvatarTextureCache.GetOrFetchAsync(url, CancellationToken.None);
+			if (textureTask.IsCompletedSuccessfully && textureTask.Result is { } texture)
+			{
+				ImGui.SetCursorScreenPos(origin);
+				ImGui.Image(texture.Handle, new Vector2(size, size));
+				drewAny = true;
+			}
+		}
+
+		if (drewAny)
+		{
+			ImGui.SetCursorScreenPos(new Vector2(origin.X, origin.Y + size));
+		}
+		else
+		{
+			ImGui.Dummy(new Vector2(size, size));
+		}
+	}
+
 	public static string FormatNameLine(string name, string? title) =>
 		title != null ? $"{name}  <{title}>" : name;
 

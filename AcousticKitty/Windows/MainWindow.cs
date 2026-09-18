@@ -19,6 +19,7 @@ public enum MainWindowTab
 	Nearby,
 	Queues,
 	Database,
+	Search,
 	Settings,
 }
 
@@ -32,6 +33,7 @@ public sealed class MainWindow : Window, IDisposable
 	private readonly FileDialogManager fileDialogManager = new();
 	private readonly NearbyTab nearbyTab;
 	private readonly QueuesTab queuesTab;
+	private readonly SearchTab searchTab;
 	private readonly DatabaseTab databaseTab;
 	private readonly SettingsTab settingsTab;
 
@@ -54,6 +56,7 @@ public sealed class MainWindow : Window, IDisposable
 			Plugin.PluginInterface.AssemblyLocation.DirectoryName!, "images", "logo.png");
 		this.nearbyTab = new NearbyTab(plugin, this.fileDialogManager);
 		this.queuesTab = new QueuesTab(plugin);
+		this.searchTab = new SearchTab(plugin);
 		this.databaseTab = new DatabaseTab(plugin);
 		this.settingsTab = new SettingsTab(plugin);
 	}
@@ -88,6 +91,7 @@ public sealed class MainWindow : Window, IDisposable
 				this.DrawTab("Nearby", MainWindowTab.Nearby);
 				this.DrawTab("Queues", MainWindowTab.Queues);
 				this.DrawTab("Database", MainWindowTab.Database);
+				this.DrawTab("Search", MainWindowTab.Search);
 				this.DrawTab("Settings", MainWindowTab.Settings);
 			}
 		}
@@ -108,6 +112,9 @@ public sealed class MainWindow : Window, IDisposable
 					break;
 				case MainWindowTab.Database:
 					this.databaseTab.Draw(justSelected);
+					break;
+				case MainWindowTab.Search:
+					this.searchTab.Draw();
 					break;
 				case MainWindowTab.Settings:
 					this.settingsTab.Draw();

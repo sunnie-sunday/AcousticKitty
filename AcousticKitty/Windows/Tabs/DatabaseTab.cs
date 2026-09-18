@@ -3,6 +3,7 @@
 // SPDX-FileType: SOURCE
 // SPDX-FileContributor: Contributions by /xivg/
 
+using System;
 using System.Collections.Generic;
 using AcousticKitty.Character;
 using AcousticKitty.Common;
@@ -20,16 +21,19 @@ internal sealed class DatabaseTab(Plugin plugin)
 	{
 		Unverified,
 		Hidden,
+		Unseen,
 	}
 
 	private string nameFilter = string.Empty;
 	private int unverifiedPage;
 	private int hiddenPage;
+	private int unseenPage;
 
 	private DatabaseSubTab? lastDrawnSubTab;
 
 	private readonly FilterCache<DatabaseEntryViewModel> unverifiedFilterCache = new();
 	private readonly FilterCache<DatabaseEntryViewModel> hiddenFilterCache = new();
+	private readonly FilterCache<DatabaseEntryViewModel> unseenFilterCache = new();
 
 	private readonly Dictionary<string, string> hiddenLodestoneIdInputs = new();
 
@@ -71,6 +75,17 @@ internal sealed class DatabaseTab(Plugin plugin)
 			ImGui.EndTabItem();
 		}
 
+		if (ImGui.BeginTabItem(
+			$"{this.TabLabel("Unseen", overview.Unseen.Count, DatabaseSubTab.Unseen)}###DatabaseUnseenTab"))
+		{
+			activeSubTab = DatabaseSubTab.Unseen;
+			this.DrawSection(
+				overview.Unseen, this.unseenFilterCache, ref this.unseenPage, "DatabaseUnseen",
+				"No Lodestone match is known for a character without Character Data yet.",
+				statusMessage: null, overview.IsReloadingUnseen);
+			ImGui.EndTabItem();
+		}
+
 		ImGui.EndTabBar();
 
 		if (activeSubTab is { } active && (justSelected || this.lastDrawnSubTab != active))
@@ -94,6 +109,9 @@ internal sealed class DatabaseTab(Plugin plugin)
 			case DatabaseSubTab.Hidden:
 				overview.ReloadHiddenAsync();
 				break;
+			case DatabaseSubTab.Unseen:
+				overview.ReloadUnseenAsync();
+				break;
 		}
 	}
 
@@ -101,6 +119,7 @@ internal sealed class DatabaseTab(Plugin plugin)
 	{
 		DatabaseSubTab.Unverified => overview.IsReloadingUnverified,
 		DatabaseSubTab.Hidden => overview.IsReloadingHidden,
+		DatabaseSubTab.Unseen => overview.IsReloadingUnseen,
 		_ => false,
 	};
 
@@ -115,6 +134,7 @@ internal sealed class DatabaseTab(Plugin plugin)
 			{
 				this.unverifiedPage = 0;
 				this.hiddenPage = 0;
+				this.unseenPage = 0;
 			},
 			refreshEnabled: !isReloading,
 			onRefresh: () =>

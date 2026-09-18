@@ -44,6 +44,8 @@ public sealed class Plugin : IDalamudPlugin
 
 	internal AvatarTextureCache AvatarTextureCache { get; }
 
+	internal GroupSearchService GroupSearchService { get; }
+
 	internal NearbyCharactersService NearbyCharactersService { get; }
 
 	internal DatabaseOverviewService DatabaseOverviewService { get; }
@@ -68,6 +70,13 @@ public sealed class Plugin : IDalamudPlugin
 		this.avatarWorldHistoryService = new AvatarWorldHistoryService(
 			this.LodestoneClient, this.characterDirectory, DataManager, Log);
 		this.AvatarTextureCache = new AvatarTextureCache(this.LodestoneClient, TextureProvider);
+		this.GroupSearchService = new GroupSearchService(
+			this.LodestoneClient,
+			this.lodestoneCache,
+			this.characterDirectory,
+			DataManager,
+			this.AvatarTextureCache,
+			Log);
 		this.NearbyCharactersService = new NearbyCharactersService(
 			PlayerState,
 			ObjectTable,
@@ -80,7 +89,7 @@ public sealed class Plugin : IDalamudPlugin
 			this.Configuration,
 			Log);
 		this.DatabaseOverviewService = new DatabaseOverviewService(
-			this.lodestoneCache, this.characterDirectory, DataManager, Log);
+			this.lodestoneCache, this.characterDirectory, DataManager, PlayerState, Log);
 
 		this.mainWindow = new MainWindow(this);
 
@@ -107,6 +116,7 @@ public sealed class Plugin : IDalamudPlugin
 		this.mainWindow.Dispose();
 
 		this.NearbyCharactersService.Dispose();
+		this.GroupSearchService.Dispose();
 		this.AvatarTextureCache.Dispose();
 		this.LodestoneClient.Dispose();
 		this.lodestoneCache.Dispose();

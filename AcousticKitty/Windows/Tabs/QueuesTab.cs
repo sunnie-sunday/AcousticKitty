@@ -3,7 +3,6 @@
 // SPDX-FileType: SOURCE
 // SPDX-FileContributor: Contributions by /xivg/
 
-using System;
 using AcousticKitty.Character;
 using AcousticKitty.Windows.Views;
 using Dalamud.Bindings.ImGui;
@@ -51,11 +50,6 @@ internal sealed class QueuesTab(Plugin plugin)
 				"Auto Lodestone queue", false, nearby.RunSearchOnce, "QueueRunSearch");
 		}
 
-		this.DrawQueue(nearby);
-	}
-
-	private void DrawQueue(NearbyCharactersService nearby)
-	{
 		ImGui.Spacing();
 
 		if (nearby.Queue.Count == 0)
