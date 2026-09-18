@@ -10,17 +10,23 @@ using System.Linq;
 using System.Threading.Tasks;
 using AcousticKitty.Character;
 using AcousticKitty.Lodestone;
+using AcousticKitty.Echo;
 using Dalamud.Plugin.Services;
 
 namespace AcousticKitty.Common;
 
 public sealed class DatabaseOverviewService(
 	LodestoneCache lodestoneCache,
+	EchoStore echoStore,
 	CharacterDirectory characterDirectory,
 	IDataManager dataManager,
 	IPlayerState playerState,
 	IPluginLog log)
 {
+	private volatile IReadOnlyList<DatabaseEntryViewModel> pinned =
+		Array.Empty<DatabaseEntryViewModel>();
+	private volatile IReadOnlyList<DatabaseEntryViewModel> verified =
+		Array.Empty<DatabaseEntryViewModel>();
 	private volatile IReadOnlyList<DatabaseEntryViewModel> unverified =
 		Array.Empty<DatabaseEntryViewModel>();
 	private volatile IReadOnlyList<DatabaseEntryViewModel> hidden =
@@ -28,9 +34,15 @@ public sealed class DatabaseOverviewService(
 	private volatile IReadOnlyList<DatabaseEntryViewModel> unseen =
 		Array.Empty<DatabaseEntryViewModel>();
 
+	private volatile bool isReloadingPinned;
+	private volatile bool isReloadingVerified;
 	private volatile bool isReloadingUnverified;
 	private volatile bool isReloadingHidden;
 	private volatile bool isReloadingUnseen;
+
+	public IReadOnlyList<DatabaseEntryViewModel> Pinned => this.pinned;
+
+	public IReadOnlyList<DatabaseEntryViewModel> Verified => this.verified;
 
 	public IReadOnlyList<DatabaseEntryViewModel> Unverified => this.unverified;
 
@@ -38,11 +50,23 @@ public sealed class DatabaseOverviewService(
 
 	public IReadOnlyList<DatabaseEntryViewModel> Unseen => this.unseen;
 
+	public bool IsReloadingPinned => this.isReloadingPinned;
+
+	public bool IsReloadingVerified => this.isReloadingVerified;
+
 	public bool IsReloadingUnverified => this.isReloadingUnverified;
 
 	public bool IsReloadingHidden => this.isReloadingHidden;
 
 	public bool IsReloadingUnseen => this.isReloadingUnseen;
+
+	public void ReloadPinnedAsync() =>
+		DatabaseOverviewService.RunAsync(
+			() => this.isReloadingPinned, v => this.isReloadingPinned = v, this.ReloadPinnedCore);
+
+	public void ReloadVerifiedAsync() =>
+		DatabaseOverviewService.RunAsync(
+			() => this.isReloadingVerified, v => this.isReloadingVerified = v, this.ReloadVerifiedCore);
 
 	public void ReloadUnverifiedAsync() =>
 		DatabaseOverviewService.RunAsync(
@@ -77,12 +101,75 @@ public sealed class DatabaseOverviewService(
 		});
 	}
 
+	private void ReloadPinnedCore()
+	{
+		var stopwatch = Stopwatch.StartNew();
+		var pinnedCharacters = echoStore.GetAllPinned();
+		var pinnedKeys = pinnedCharacters.Select(pin => pin.Key).ToList();
+		var cachedProfilesByKey =
+			lodestoneCache.GetCachedProfilesForKeys(pinnedKeys).ToDictionary(cached => cached.Key);
+		var resolvedByKey =
+			lodestoneCache.GetResolvedForKeys(pinnedKeys).ToDictionary(resolved => resolved.Key);
+
+		var pinnedList = pinnedCharacters.Select(pin =>
+		{
+			var nameWorldKey = CharacterDirectory.BuildNameWorldKey(pin.Name, pin.HomeWorldId);
+			var known = characterDirectory.TryGetByNameWorldKey(nameWorldKey);
+			cachedProfilesByKey.TryGetValue(pin.Key, out var cached);
+			resolvedByKey.TryGetValue(pin.Key, out var resolved);
+			var worldName = GameDataResolver.ResolveWorldName(dataManager, pin.HomeWorldId);
+			var dataCenterName = GameDataResolver.ResolveDataCenterName(dataManager, pin.HomeWorldId);
+			var nameHistory = known != null
+				? DatabaseOverviewService.LazyNameHistory(characterDirectory, known.Data.ContentId)
+				: null;
+			return new DatabaseEntryViewModel(
+				pin.Key, pin.Name, worldName, true, cached?.Profile, cached?.FetchedAtUtc,
+				known?.Data, known?.LastSeenUtc, resolved?.AvatarUrlHash, dataCenterName,
+				NameHistory: nameHistory);
+		}).ToList();
+
+		this.pinned = DatabaseOverviewService.OrderByName(pinnedList);
+		log.Verbose(
+			$"Reloaded Database Pinned tab: {this.pinned.Count} in {stopwatch.ElapsedMilliseconds} ms.");
+	}
+
+	private void ReloadVerifiedCore()
+	{
+		var stopwatch = Stopwatch.StartNew();
+		DatabaseCapEnforcer.EnforceVerified(characterDirectory, lodestoneCache, echoStore);
+		this.verified = DatabaseOverviewService.OrderByName(
+			this.BuildVerifiedOrUnverifiedList(wantVerified: true));
+		log.Verbose(
+			$"Reloaded Database Verified tab: {this.verified.Count} in {stopwatch.ElapsedMilliseconds} ms.");
+	}
+
 	private void ReloadUnverifiedCore()
 	{
 		var stopwatch = Stopwatch.StartNew();
-		DatabaseCapEnforcer.EnforceUnverified(characterDirectory, lodestoneCache);
+		DatabaseCapEnforcer.EnforceUnverified(characterDirectory, lodestoneCache, echoStore);
+		this.unverified = DatabaseOverviewService.OrderByName(
+			this.BuildVerifiedOrUnverifiedList(wantVerified: false));
+		log.Verbose(
+			$"Reloaded Database Unverified tab: {this.unverified.Count} in " +
+			$"{stopwatch.ElapsedMilliseconds} ms.");
+	}
 
-		var candidates = characterDirectory.GetFoundOrAccessRestricted().ToList();
+	private List<DatabaseEntryViewModel> BuildVerifiedOrUnverifiedList(bool wantVerified)
+	{
+		var verifiedKeys = echoStore.GetAllVerifiedKeys();
+		var pinnedKeys = new HashSet<string>(echoStore.GetAllPinned().Select(pin => pin.Key));
+
+		var candidates = characterDirectory.GetFoundOrAccessRestricted()
+			.Where(known =>
+			{
+				var cacheKey = CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId);
+				var isVerified = verifiedKeys.Contains(cacheKey);
+				return wantVerified
+					? isVerified && !pinnedKeys.Contains(cacheKey)
+					: !isVerified;
+			})
+			.ToList();
+
 		var cacheKeys = candidates
 			.Select(known => CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId))
 			.ToList();
@@ -91,26 +178,22 @@ public sealed class DatabaseOverviewService(
 		var resolvedByKey =
 			lodestoneCache.GetResolvedForKeys(cacheKeys).ToDictionary(resolved => resolved.Key);
 
-		this.unverified = candidates
-			.OrderByDescending(known => known.LastSeenUtc)
-			.Select(known =>
-			{
-				var cacheKey = CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId);
-				var worldName = GameDataResolver.ResolveWorldName(dataManager, known.Data.HomeWorldId);
-				var dataCenterName =
-					GameDataResolver.ResolveDataCenterName(dataManager, known.Data.HomeWorldId);
-				cachedProfilesByKey.TryGetValue(cacheKey, out var cached);
-				resolvedByKey.TryGetValue(cacheKey, out var resolved);
-				return new DatabaseEntryViewModel(
-					cacheKey, known.Data.Name, worldName,
-					cached?.Profile, cached?.FetchedAtUtc, known.Data, known.LastSeenUtc,
-					resolved?.AvatarUrlHash, dataCenterName,
-					NameHistory: DatabaseOverviewService.LazyNameHistory(
-						characterDirectory, known.Data.ContentId));
-			}).ToArray();
-		log.Verbose(
-			$"Reloaded Database Unverified tab: {this.unverified.Count} in " +
-			$"{stopwatch.ElapsedMilliseconds} ms.");
+		return candidates.Select(known =>
+		{
+			var cacheKey = CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId);
+			var worldName = GameDataResolver.ResolveWorldName(dataManager, known.Data.HomeWorldId);
+			var dataCenterName =
+				GameDataResolver.ResolveDataCenterName(dataManager, known.Data.HomeWorldId);
+			cachedProfilesByKey.TryGetValue(cacheKey, out var cached);
+			resolvedByKey.TryGetValue(cacheKey, out var resolved);
+			return new DatabaseEntryViewModel(
+				cacheKey, known.Data.Name, worldName, pinnedKeys.Contains(cacheKey),
+				cached?.Profile, cached?.FetchedAtUtc, known.Data, known.LastSeenUtc,
+				resolved?.AvatarUrlHash, dataCenterName,
+				NameHistory: DatabaseOverviewService.LazyNameHistory(
+					characterDirectory, known.Data.ContentId),
+				IsVerified: wantVerified);
+		}).ToList();
 	}
 
 	private void ReloadHiddenCore()
@@ -119,29 +202,28 @@ public sealed class DatabaseOverviewService(
 		DatabaseCapEnforcer.EnforceHidden(characterDirectory);
 
 		var hiddenKnown = characterDirectory.GetHidden();
+		var pinnedKeys = new HashSet<string>(echoStore.GetAllPinned().Select(pin => pin.Key));
 		var cacheKeys = hiddenKnown
 			.Select(known => CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId))
 			.ToList();
 		var resolvedByKey =
 			lodestoneCache.GetResolvedForKeys(cacheKeys).ToDictionary(resolved => resolved.Key);
 
-		var hiddenList = hiddenKnown
-			.OrderByDescending(known => known.LastSeenUtc)
-			.Select(known =>
-			{
-				var cacheKey = CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId);
-				var worldName = GameDataResolver.ResolveWorldName(dataManager, known.Data.HomeWorldId);
-				var dataCenterName =
-					GameDataResolver.ResolveDataCenterName(dataManager, known.Data.HomeWorldId);
-				resolvedByKey.TryGetValue(cacheKey, out var resolved);
-				return new DatabaseEntryViewModel(
-					cacheKey, known.Data.Name, worldName,
-					null, null, known.Data, known.LastSeenUtc, resolved?.AvatarUrlHash, dataCenterName,
-					NameHistory: DatabaseOverviewService.LazyNameHistory(
-						characterDirectory, known.Data.ContentId));
-			}).ToArray();
+		var hiddenList = hiddenKnown.Select(known =>
+		{
+			var cacheKey = CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId);
+			var worldName = GameDataResolver.ResolveWorldName(dataManager, known.Data.HomeWorldId);
+			var dataCenterName =
+				GameDataResolver.ResolveDataCenterName(dataManager, known.Data.HomeWorldId);
+			resolvedByKey.TryGetValue(cacheKey, out var resolved);
+			return new DatabaseEntryViewModel(
+				cacheKey, known.Data.Name, worldName, pinnedKeys.Contains(cacheKey),
+				null, null, known.Data, known.LastSeenUtc, resolved?.AvatarUrlHash, dataCenterName,
+				NameHistory: DatabaseOverviewService.LazyNameHistory(
+					characterDirectory, known.Data.ContentId));
+		}).ToList();
 
-		this.hidden = hiddenList;
+		this.hidden = DatabaseOverviewService.OrderByName(hiddenList);
 		log.Verbose(
 			$"Reloaded Database Hidden tab: {this.hidden.Count} in {stopwatch.ElapsedMilliseconds} ms.");
 	}
@@ -152,6 +234,7 @@ public sealed class DatabaseOverviewService(
 		DatabaseCapEnforcer.EnforceUnseen(characterDirectory, lodestoneCache);
 
 		var seenNameWorldKeys = new HashSet<string>(characterDirectory.GetAllNameWorldKeys());
+		var pinnedKeys = new HashSet<string>(echoStore.GetAllPinned().Select(pin => pin.Key));
 		var cachedProfilesByKey = lodestoneCache.GetAllCachedProfiles().ToDictionary(cached => cached.Key);
 		var resolvedByKey = lodestoneCache.GetAllResolved().ToDictionary(resolved => resolved.Key);
 
@@ -159,12 +242,10 @@ public sealed class DatabaseOverviewService(
 			? CharacterDirectory.BuildNameWorldKey(playerState.CharacterName, playerState.HomeWorld.RowId)
 			: null;
 		var unseenEntries = this.BuildUnseenList(
-			cachedProfilesByKey, resolvedByKey, seenNameWorldKeys, ownNameWorldKey);
+			cachedProfilesByKey, resolvedByKey, seenNameWorldKeys, pinnedKeys, ownNameWorldKey);
 
-		this.unseen = unseenEntries
-			.OrderByDescending(entry => entry.Timestamp)
-			.Select(entry => entry.Entry)
-			.ToArray();
+		this.unseen = DatabaseOverviewService.OrderByName(
+			unseenEntries.Select(entry => entry.Entry).ToList());
 		log.Verbose(
 			$"Reloaded Database Unseen tab: {this.unseen.Count} in {stopwatch.ElapsedMilliseconds} ms.");
 	}
@@ -173,6 +254,7 @@ public sealed class DatabaseOverviewService(
 		Dictionary<string, CachedProfileEntry> cachedProfilesByKey,
 		Dictionary<string, ResolvedCharacterEntry> resolvedByKey,
 		HashSet<string> seenNameWorldKeys,
+		HashSet<string> pinnedKeys,
 		string? ownNameWorldKey)
 	{
 		var unseenEntries = new List<(DatabaseEntryViewModel Entry, string Key, DateTime Timestamp)>();
@@ -195,7 +277,7 @@ public sealed class DatabaseOverviewService(
 				? GameDataResolver.ResolveJobAbbreviation(dataManager, jobId)
 				: null;
 			var entry = new DatabaseEntryViewModel(
-				cached.Key, name, worldName,
+				cached.Key, name, worldName, pinnedKeys.Contains(cached.Key),
 				cached.Profile, cached.FetchedAtUtc, null, null,
 				resolvedForKey?.AvatarUrlHash, dataCenterName, jobAbbreviation,
 				resolvedForKey?.Level?.ToString());
@@ -222,7 +304,7 @@ public sealed class DatabaseOverviewService(
 				? GameDataResolver.ResolveJobAbbreviation(dataManager, jobId)
 				: null;
 			var entry = new DatabaseEntryViewModel(
-				resolved.Key, resolved.Name, worldName,
+				resolved.Key, resolved.Name, worldName, pinnedKeys.Contains(resolved.Key),
 				null, null, null, null, resolved.AvatarUrlHash, dataCenterName,
 				jobAbbreviation, resolved.Level?.ToString());
 			unseenEntries.Add((entry, resolved.Key, resolved.ResolvedAtUtc));
@@ -231,6 +313,10 @@ public sealed class DatabaseOverviewService(
 
 		return unseenEntries;
 	}
+
+	private static IReadOnlyList<DatabaseEntryViewModel> OrderByName(
+		List<DatabaseEntryViewModel> entries) =>
+		entries.OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase).ToArray();
 
 	private static Lazy<IReadOnlyList<NameHistoryEntry>> LazyNameHistory(
 		CharacterDirectory characterDirectory, ulong contentId) =>

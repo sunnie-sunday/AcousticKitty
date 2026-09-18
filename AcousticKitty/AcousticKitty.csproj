@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
 	<PropertyGroup>
-		<Version>0.0.4.0</Version>
+		<Version>0.0.5.0</Version>
 		<!-- Manifest fields -->
 		<Author>Sunnie Sunday</Author>
 		<Name>Acoustic Kitty</Name>
 		<Punchline>Counterintelligence plugin.</Punchline>
-		<Description>Cross-references nearby in-game characters against their Lodestone profile.</Description>
+		<Description>Cross-references nearby in-game characters against their Lodestone profile, and builds an audit queue against EchoVault's registration API to see if they're already registered as verified sightings contributors. Echo's API used to find stalkers can optionally be routed through a SOCKS5 proxy.</Description>
 		<RepoUrl>https://github.com/sunnie-sunday/AcousticKitty</RepoUrl>
 		<Tags>Lodestone;Character;Profile</Tags>
 		<!-- Only used for a real (non-dev) install. -->

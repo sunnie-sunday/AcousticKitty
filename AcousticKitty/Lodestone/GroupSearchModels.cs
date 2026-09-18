@@ -21,7 +21,7 @@ public enum GroupSearchState
 
 public enum MemberProfileState
 {
-	Idle,
+	NotPinned,
 	Fetching,
 	Loaded,
 	NotFound,
@@ -33,7 +33,11 @@ public sealed class GroupMemberViewModel(MemberListEntry entry)
 {
 	public MemberListEntry Entry { get; } = entry;
 
-	public MemberProfileState ProfileState { get; internal set; } = MemberProfileState.Idle;
+	public bool IsPinned { get; internal set; }
+
+	public bool IsVerified { get; internal set; }
+
+	public MemberProfileState ProfileState { get; internal set; } = MemberProfileState.NotPinned;
 
 	public LodestoneProfile? Profile { get; internal set; }
 

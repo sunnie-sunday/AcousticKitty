@@ -14,6 +14,7 @@ public sealed record DatabaseEntryViewModel(
 	string CacheKey,
 	string Name,
 	string World,
+	bool IsPinned,
 	Lazy<LodestoneProfile>? Profile,
 	DateTime? ProfileFetchedAtUtc,
 	PlayerLocalData? CharacterData,
@@ -22,4 +23,5 @@ public sealed record DatabaseEntryViewModel(
 	string? DataCenter = null,
 	string? JobAbbreviation = null,
 	string? LevelText = null,
-	Lazy<IReadOnlyList<NameHistoryEntry>>? NameHistory = null);
+	Lazy<IReadOnlyList<NameHistoryEntry>>? NameHistory = null,
+	bool IsVerified = false);

@@ -197,6 +197,7 @@ internal sealed class SearchTab(Plugin plugin)
 			plugin,
 			new CharacterRowData(
 				member.Entry.CharacterId.ToString(),
+				member.IsPinned,
 				ProfileView.ResolveAvatarUrl(member.Profile, member.Entry.AvatarUrlHash, fallbackWorld),
 				primaryLine,
 				badge,
@@ -209,6 +210,7 @@ internal sealed class SearchTab(Plugin plugin)
 					? new Lazy<IReadOnlyList<NameHistoryEntry>>(
 						() => plugin.GroupSearchService.GetNameHistory(known.Data.ContentId))
 					: null,
+				member.IsVerified,
 				member.ProfileFetchedAtUtc));
 	}
 }

@@ -19,18 +19,24 @@ internal sealed class DatabaseTab(Plugin plugin)
 
 	private enum DatabaseSubTab
 	{
+		Stalkers,
+		Verified,
 		Unverified,
 		Hidden,
 		Unseen,
 	}
 
 	private string nameFilter = string.Empty;
+	private int pinnedPage;
+	private int verifiedPage;
 	private int unverifiedPage;
 	private int hiddenPage;
 	private int unseenPage;
 
 	private DatabaseSubTab? lastDrawnSubTab;
 
+	private readonly FilterCache<DatabaseEntryViewModel> pinnedFilterCache = new();
+	private readonly FilterCache<DatabaseEntryViewModel> verifiedFilterCache = new();
 	private readonly FilterCache<DatabaseEntryViewModel> unverifiedFilterCache = new();
 	private readonly FilterCache<DatabaseEntryViewModel> hiddenFilterCache = new();
 	private readonly FilterCache<DatabaseEntryViewModel> unseenFilterCache = new();
@@ -50,6 +56,28 @@ internal sealed class DatabaseTab(Plugin plugin)
 		}
 
 		DatabaseSubTab? activeSubTab = null;
+
+		if (ImGui.BeginTabItem(
+			$"{this.TabLabel("Stalkers", overview.Pinned.Count, DatabaseSubTab.Stalkers)}###DatabaseStalkersTab"))
+		{
+			activeSubTab = DatabaseSubTab.Stalkers;
+			this.DrawSection(
+				overview.Pinned, this.pinnedFilterCache, ref this.pinnedPage, "DatabasePinned",
+				"Nothing pinned yet - the Echo API hasn't confirmed any character as pinned.",
+				statusMessage: null, overview.IsReloadingPinned);
+			ImGui.EndTabItem();
+		}
+
+		if (ImGui.BeginTabItem(
+			$"{this.TabLabel("Verified", overview.Verified.Count, DatabaseSubTab.Verified)}###DatabaseVerifiedTab"))
+		{
+			activeSubTab = DatabaseSubTab.Verified;
+			this.DrawSection(
+				overview.Verified, this.verifiedFilterCache, ref this.verifiedPage, "DatabaseVerified",
+				"No matched character has a definitive Echo API answer yet.",
+				statusMessage: null, overview.IsReloadingVerified);
+			ImGui.EndTabItem();
+		}
 
 		if (ImGui.BeginTabItem(
 			$"{this.TabLabel("Unverified", overview.Unverified.Count, DatabaseSubTab.Unverified)}###DatabaseUnverifiedTab"))
@@ -103,6 +131,12 @@ internal sealed class DatabaseTab(Plugin plugin)
 	{
 		switch (tab)
 		{
+			case DatabaseSubTab.Stalkers:
+				overview.ReloadPinnedAsync();
+				break;
+			case DatabaseSubTab.Verified:
+				overview.ReloadVerifiedAsync();
+				break;
 			case DatabaseSubTab.Unverified:
 				overview.ReloadUnverifiedAsync();
 				break;
@@ -117,6 +151,8 @@ internal sealed class DatabaseTab(Plugin plugin)
 
 	private static bool IsReloadingSubTab(DatabaseOverviewService overview, DatabaseSubTab tab) => tab switch
 	{
+		DatabaseSubTab.Stalkers => overview.IsReloadingPinned,
+		DatabaseSubTab.Verified => overview.IsReloadingVerified,
 		DatabaseSubTab.Unverified => overview.IsReloadingUnverified,
 		DatabaseSubTab.Hidden => overview.IsReloadingHidden,
 		DatabaseSubTab.Unseen => overview.IsReloadingUnseen,
@@ -132,6 +168,8 @@ internal sealed class DatabaseTab(Plugin plugin)
 			ref this.nameFilter,
 			onFilterChanged: () =>
 			{
+				this.pinnedPage = 0;
+				this.verifiedPage = 0;
 				this.unverifiedPage = 0;
 				this.hiddenPage = 0;
 				this.unseenPage = 0;
@@ -201,6 +239,7 @@ internal sealed class DatabaseTab(Plugin plugin)
 			plugin,
 			new CharacterRowData(
 				entry.CacheKey,
+				entry.IsPinned,
 				ProfileView.ResolveAvatarUrl(entry.Profile?.Value, entry.AvatarUrlHash, entry.World),
 				primaryLine,
 				badge,
@@ -210,6 +249,7 @@ internal sealed class DatabaseTab(Plugin plugin)
 				entry.CharacterData,
 				entry.CharacterDataAsOfUtc,
 				entry.NameHistory,
+				entry.IsVerified,
 				entry.ProfileFetchedAtUtc));
 
 		var rowEndY = ImGui.GetCursorPosY();

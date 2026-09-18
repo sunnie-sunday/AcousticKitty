@@ -6,6 +6,7 @@
 using AcousticKitty.Character;
 using AcousticKitty.Common;
 using AcousticKitty.Lodestone;
+using AcousticKitty.Echo;
 using AcousticKitty.Windows;
 using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
@@ -42,6 +43,10 @@ public sealed class Plugin : IDalamudPlugin
 
 	internal LodestoneClient LodestoneClient { get; }
 
+	internal IEchoClientFactory EchoClientFactory { get; }
+
+	internal EchoService EchoService { get; }
+
 	internal AvatarTextureCache AvatarTextureCache { get; }
 
 	internal GroupSearchService GroupSearchService { get; }
@@ -51,6 +56,7 @@ public sealed class Plugin : IDalamudPlugin
 	internal DatabaseOverviewService DatabaseOverviewService { get; }
 
 	private readonly LodestoneCache lodestoneCache;
+	private readonly EchoStore echoStore;
 	private readonly CharacterDirectory characterDirectory;
 	private readonly AvatarWorldHistoryService avatarWorldHistoryService;
 	private readonly MainWindow mainWindow;
@@ -65,17 +71,32 @@ public sealed class Plugin : IDalamudPlugin
 
 		this.LodestoneClient = new LodestoneClient(this.Configuration, Log);
 		this.lodestoneCache = new LodestoneCache(PluginInterface.ConfigDirectory.FullName);
+		this.echoStore = new EchoStore(PluginInterface.ConfigDirectory.FullName, Log);
 		this.characterDirectory =
 			new CharacterDirectory(PluginInterface.ConfigDirectory.FullName, Log);
 		this.avatarWorldHistoryService = new AvatarWorldHistoryService(
 			this.LodestoneClient, this.characterDirectory, DataManager, Log);
+		this.EchoClientFactory = new EchoClientFactory(this.Configuration, Log);
+		this.EchoService = new EchoService(
+			PlayerState,
+			this.EchoClientFactory,
+			this.echoStore,
+			this.characterDirectory,
+			this.lodestoneCache,
+			this.avatarWorldHistoryService,
+			DataManager,
+			this.Configuration,
+			Log,
+			PluginInterface.ConfigDirectory.FullName);
 		this.AvatarTextureCache = new AvatarTextureCache(this.LodestoneClient, TextureProvider);
 		this.GroupSearchService = new GroupSearchService(
 			this.LodestoneClient,
 			this.lodestoneCache,
+			this.echoStore,
 			this.characterDirectory,
 			DataManager,
 			this.AvatarTextureCache,
+			this.EchoService,
 			Log);
 		this.NearbyCharactersService = new NearbyCharactersService(
 			PlayerState,
@@ -85,11 +106,14 @@ public sealed class Plugin : IDalamudPlugin
 			DataManager,
 			this.LodestoneClient,
 			this.lodestoneCache,
+			this.echoStore,
 			this.characterDirectory,
 			this.Configuration,
+			this.EchoService,
 			Log);
 		this.DatabaseOverviewService = new DatabaseOverviewService(
-			this.lodestoneCache, this.characterDirectory, DataManager, PlayerState, Log);
+			this.lodestoneCache, this.echoStore, this.characterDirectory, DataManager, PlayerState,
+			Log);
 
 		this.mainWindow = new MainWindow(this);
 
@@ -118,7 +142,9 @@ public sealed class Plugin : IDalamudPlugin
 		this.NearbyCharactersService.Dispose();
 		this.GroupSearchService.Dispose();
 		this.AvatarTextureCache.Dispose();
+		this.EchoService.Dispose();
 		this.LodestoneClient.Dispose();
+		this.echoStore.Dispose();
 		this.lodestoneCache.Dispose();
 		this.characterDirectory.Dispose();
 

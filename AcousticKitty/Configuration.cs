@@ -5,7 +5,9 @@
 
 using System;
 using AcousticKitty.Character;
+using AcousticKitty.Echo;
 using Dalamud.Configuration;
+using Newtonsoft.Json;
 
 namespace AcousticKitty;
 
@@ -20,7 +22,32 @@ public sealed class Configuration : IPluginConfiguration
 
 	public string LodestoneUserAgent { get; set; } = DefaultLodestoneUserAgent;
 
+	public ProxyMode EchoProxyMode { get; set; } = ProxyMode.Socks5;
+
+	public string EchoProxyHost { get; set; } = "localhost";
+
+	public int EchoProxyPort { get; set; } = 1080;
+
+	public string EchoProxyUsername { get; set; } = string.Empty;
+
+	public string EchoProxyEncryptedPassword { get; set; } = string.Empty;
+
+	[JsonIgnore]
+	public string EchoProxyPassword
+	{
+		get => DpapiProtector.Unprotect(this.EchoProxyEncryptedPassword);
+		set => this.EchoProxyEncryptedPassword = DpapiProtector.Protect(value);
+	}
+
+	public string EchoApiHost { get; set; } = "http://localhost";
+
+	public string EchoPluginVersion { get; set; } = "0.0.1";
+
+	public int EchoProtocolVersion { get; set; } = 2;
+
 	public NearbySearchMode NearbySearchMode { get; set; } = NearbySearchMode.Manual;
+
+	public EchoQueueMode EchoQueueMode { get; set; } = EchoQueueMode.Auto;
 
 	public void Save()
 	{

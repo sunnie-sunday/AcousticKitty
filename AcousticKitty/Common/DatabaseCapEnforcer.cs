@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using AcousticKitty.Character;
 using AcousticKitty.Lodestone;
+using AcousticKitty.Echo;
 
 namespace AcousticKitty.Common;
 
@@ -16,16 +17,22 @@ internal static class DatabaseCapEnforcer
 	public const int UnverifiedCap = 25_000;
 	public const int HiddenCap = 25_000;
 	public const int UnseenCap = 25_000;
+	public const int VerifiedCap = 25_000;
 
 	public static IReadOnlyList<KnownCharacter> GetUnverifiedCandidates(
-		CharacterDirectory characterDirectory) =>
-		characterDirectory.GetFoundOrAccessRestricted()
-			.Where(known => known.LodestoneId != null)
-			.ToArray();
-
-	public static void EnforceUnverified(CharacterDirectory characterDirectory, LodestoneCache lodestoneCache)
+		CharacterDirectory characterDirectory, EchoStore echoStore)
 	{
-		var candidates = DatabaseCapEnforcer.GetUnverifiedCandidates(characterDirectory)
+		var verifiedKeys = echoStore.GetAllVerifiedKeys();
+		return characterDirectory.GetFoundOrAccessRestricted()
+			.Where(known => known.LodestoneId != null &&
+				!verifiedKeys.Contains(CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId)))
+			.ToArray();
+	}
+
+	public static void EnforceUnverified(
+		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, EchoStore echoStore)
+	{
+		var candidates = DatabaseCapEnforcer.GetUnverifiedCandidates(characterDirectory, echoStore)
 			.Select(known => (
 				known.Data.ContentId,
 				CacheKey: CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId),
@@ -92,5 +99,30 @@ internal static class DatabaseCapEnforcer
 		OldestFirstEviction.Trim(
 			candidates, UnseenCap, _ => true, item => item.Timestamp,
 			items => lodestoneCache.DeleteCharacters(items.Select(item => item.Key)));
+	}
+
+	public static void EnforceVerified(
+		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, EchoStore echoStore)
+	{
+		var verifiedKeys = echoStore.GetAllVerifiedKeys();
+		var pinnedKeys = new HashSet<string>(
+			echoStore.GetAllPinned().Select(pin => pin.Key));
+
+		var candidates = characterDirectory.GetFoundOrAccessRestricted()
+			.Select(known => (
+				known.Data.ContentId,
+				CacheKey: CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId),
+				known.LastSeenUtc))
+			.Where(item => verifiedKeys.Contains(item.CacheKey))
+			.ToList();
+
+		OldestFirstEviction.Trim(
+			candidates, VerifiedCap, item => !pinnedKeys.Contains(item.CacheKey), item => item.LastSeenUtc,
+			items =>
+			{
+				characterDirectory.DeleteMany(items.Select(item => item.ContentId));
+				lodestoneCache.DeleteCharacters(items.Select(item => item.CacheKey));
+				echoStore.DeleteVerified(items.Select(item => item.CacheKey));
+			});
 	}
 }

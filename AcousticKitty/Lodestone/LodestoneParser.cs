@@ -468,8 +468,8 @@ public static class LodestoneParser
 		var splitOptions = StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries;
 		var lines = text.Split('\n', splitOptions);
 
-		return Array.Find(lines, line => line.Contains("ACOUSTIC", StringComparison.Ordinal))
-			?? Array.Find(lines, line => line.Contains("acoustic", StringComparison.Ordinal));
+		return Array.Find(lines, line => line.Contains("ECHO", StringComparison.Ordinal))
+			?? Array.Find(lines, line => line.Contains("echo", StringComparison.Ordinal));
 	}
 
 	private static (string? First, string? Second) SplitSlashPair(string? text)

@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AcousticKitty.Common;
 using AcousticKitty.Lodestone;
+using AcousticKitty.Echo;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Plugin.Services;
@@ -37,8 +38,10 @@ public sealed partial class NearbyCharactersService : IDisposable
 	private readonly IDataManager dataManager;
 	private readonly ILodestoneClient client;
 	private readonly LodestoneCache lodestoneCache;
+	private readonly EchoStore echoStore;
 	private readonly CharacterDirectory characterDirectory;
 	private readonly Configuration configuration;
+	private readonly EchoService echo;
 	private readonly IPluginLog log;
 	private readonly CancellationTokenSource disposalCts = new();
 
@@ -66,8 +69,10 @@ public sealed partial class NearbyCharactersService : IDisposable
 		IDataManager dataManager,
 		ILodestoneClient client,
 		LodestoneCache lodestoneCache,
+		EchoStore echoStore,
 		CharacterDirectory characterDirectory,
 		Configuration configuration,
+		EchoService echo,
 		IPluginLog log)
 	{
 		this.playerState = playerState;
@@ -77,8 +82,10 @@ public sealed partial class NearbyCharactersService : IDisposable
 		this.dataManager = dataManager;
 		this.client = client;
 		this.lodestoneCache = lodestoneCache;
+		this.echoStore = echoStore;
 		this.characterDirectory = characterDirectory;
 		this.configuration = configuration;
+		this.echo = echo;
 		this.log = log;
 
 		this.clientState.Logout += this.OnLogout;
@@ -232,6 +239,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 		this.lastCapEnforcementUtc = now;
 		DatabaseCapEnforcer.EnforceHidden(this.characterDirectory);
 		DatabaseCapEnforcer.EnforceUnseen(this.characterDirectory, this.lodestoneCache);
+		DatabaseCapEnforcer.EnforceVerified(this.characterDirectory, this.lodestoneCache, this.echoStore);
 	}
 
 	private static unsafe PlayerLocalData? SnapshotCharacter(
@@ -280,7 +288,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 		}
 
 		CharacterTransferRecorder.Record(
-			this.characterDirectory, this.lodestoneCache, this.dataManager,
+			this.characterDirectory, this.lodestoneCache, this.echoStore, this.dataManager,
 			data.ContentId, known.Data.Name, known.Data.HomeWorldId, known.LastSeenUtc,
 			data.Name, data.HomeWorldId, known.LodestoneId);
 	}
@@ -308,12 +316,14 @@ public sealed partial class NearbyCharactersService : IDisposable
 		var worldName = GameDataResolver.ResolveWorldName(this.dataManager, known.Data.HomeWorldId);
 		var isSearching = known.Data.ContentId == this.activeContentIdOrZero;
 		return new NearbyMemberViewModel(
-			known, null, null, isSearching, worldName, string.Empty, string.Empty);
+			known, false, null, null, isSearching, worldName, string.Empty, string.Empty);
 	}
 
 	private NearbyMemberViewModel BuildViewModel(KnownCharacter known)
 	{
 		var cacheKey = CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId);
+		var isPinned = this.echoStore.IsPinned(cacheKey);
+		var isVerified = this.echoStore.IsVerified(cacheKey);
 
 		LodestoneProfile? profile = null;
 		DateTime? profileAsOfUtc = null;
@@ -333,8 +343,8 @@ public sealed partial class NearbyCharactersService : IDisposable
 
 		var isSearching = known.Data.ContentId == this.activeContentIdOrZero;
 		return new NearbyMemberViewModel(
-			known, profile, avatarUrlHash, isSearching, worldName, dataCenterName,
-			jobAbbreviation, profileAsOfUtc);
+			known, isPinned, profile, avatarUrlHash, isSearching, worldName, dataCenterName,
+			jobAbbreviation, isVerified, profileAsOfUtc);
 	}
 
 	private async Task DrainQueueAsync()
@@ -445,6 +455,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 
 			this.characterDirectory.SetLookupResult(
 				contentId, lodestoneId, NearbyLookupState.Found, null);
+			this.echo.NotifyMatchConfirmed();
 		}
 		catch (LodestoneNotFoundException)
 		{

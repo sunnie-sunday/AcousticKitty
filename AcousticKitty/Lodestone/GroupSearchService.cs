@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AcousticKitty.Character;
 using AcousticKitty.Common;
+using AcousticKitty.Echo;
 using Dalamud.Plugin.Services;
 
 namespace AcousticKitty.Lodestone;
@@ -17,9 +18,11 @@ namespace AcousticKitty.Lodestone;
 public sealed class GroupSearchService(
 	ILodestoneClient client,
 	LodestoneCache lodestoneCache,
+	EchoStore echoStore,
 	CharacterDirectory characterDirectory,
 	IDataManager dataManager,
 	AvatarTextureCache avatarCache,
+	EchoService echo,
 	IPluginLog log) : IDisposable
 {
 	private const int MaxRosterPages = 11;
@@ -196,7 +199,7 @@ public sealed class GroupSearchService(
 					matchedByLodestoneId.Data.HomeWorldId != entry.HomeWorldId)
 				{
 					CharacterTransferRecorder.Record(
-						characterDirectory, lodestoneCache, dataManager,
+						characterDirectory, lodestoneCache, echoStore, dataManager,
 						matchedByLodestoneId.Data.ContentId, matchedByLodestoneId.Data.Name,
 						matchedByLodestoneId.Data.HomeWorldId, matchedByLodestoneId.LastSeenUtc,
 						entry.Name, entry.HomeWorldId, matchedByLodestoneId.LodestoneId);
@@ -214,8 +217,12 @@ public sealed class GroupSearchService(
 				cacheKey, entry.CharacterId, entry.Name, entry.HomeWorldId, DateTime.UtcNow,
 				entry.AvatarUrlHash, entry.Level, entry.JobId));
 
-			if (viewModel.KnownCharacter is
-				{ LookupState: NearbyLookupState.Found or NearbyLookupState.AccessRestricted })
+			viewModel.IsVerified = echoStore.IsVerified(cacheKey);
+			viewModel.IsPinned = echoStore.IsPinned(cacheKey);
+
+			if (viewModel.IsPinned ||
+				viewModel.KnownCharacter is
+					{ LookupState: NearbyLookupState.Found or NearbyLookupState.AccessRestricted })
 			{
 				var cached = lodestoneCache.TryGetCachedProfile(cacheKey);
 				if (cached != null)
@@ -223,6 +230,11 @@ public sealed class GroupSearchService(
 					viewModel.Profile = cached.Value.Profile;
 					viewModel.ProfileFetchedAtUtc = cached.Value.FetchedAtUtc;
 					viewModel.ProfileState = MemberProfileState.Loaded;
+				}
+				else if (viewModel.IsPinned)
+				{
+					viewModel.ProfileState = MemberProfileState.Fetching;
+					_ = this.FetchMemberProfileAsync(viewModel, cacheKey);
 				}
 			}
 			else if (viewModel.KnownCharacter is
@@ -284,7 +296,7 @@ public sealed class GroupSearchService(
 		}
 		catch (OperationCanceledException)
 		{
-			member.ProfileState = MemberProfileState.Idle;
+			member.ProfileState = MemberProfileState.NotPinned;
 		}
 		catch (LodestoneNotFoundException)
 		{
@@ -312,6 +324,7 @@ public sealed class GroupSearchService(
 
 		characterDirectory.SetLookupResult(
 			known.Data.ContentId, member.Entry.CharacterId, NearbyLookupState.Found, null);
+		echo.NotifyMatchConfirmed();
 	}
 
 	#endregion

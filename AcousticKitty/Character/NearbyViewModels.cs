@@ -10,15 +10,21 @@ namespace AcousticKitty.Character;
 
 public sealed class NearbyMemberViewModel(
 	KnownCharacter knownCharacter,
+	bool isPinned,
 	LodestoneProfile? profile,
 	string? avatarUrlHash,
 	bool isSearching,
 	string worldName,
 	string dataCenterName,
 	string jobAbbreviation,
+	bool isVerified = false,
 	DateTime? profileAsOfUtc = null)
 {
 	public KnownCharacter KnownCharacter { get; } = knownCharacter;
+
+	public bool IsPinned { get; internal set; } = isPinned;
+
+	public bool IsVerified { get; internal set; } = isVerified;
 
 	public LodestoneProfile? Profile { get; internal set; } = profile;
 
