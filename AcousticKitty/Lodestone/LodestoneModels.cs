@@ -18,7 +18,6 @@ public sealed record LodestoneProfile(
 	string Gender,
 	ulong? FreeCompanyId,
 	string? FreeCompanyName,
-	string? Bio,
 	uint? JobId = null,
 	int? Level = null)
 {
@@ -26,7 +25,7 @@ public sealed record LodestoneProfile(
 		ulong lodestoneId, string name, uint homeWorldId, string? avatarUrlHash,
 		ulong? freeCompanyId, string? freeCompanyName, uint? jobId, int? level) =>
 		new(lodestoneId, name, TitleId: null, homeWorldId, avatarUrlHash, IsPartiallyPrivate: true,
-			Gender: string.Empty, freeCompanyId, freeCompanyName, Bio: null, jobId, level);
+			Gender: string.Empty, freeCompanyId, freeCompanyName, jobId, level);
 
 	public static (Lazy<LodestoneProfile>? Profile, DateTime? FetchedAtUtc) ResolveOrPartial(
 		CachedProfileEntry? cached, ResolvedCharacterEntry? resolved)

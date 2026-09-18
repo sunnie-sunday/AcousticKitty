@@ -231,23 +231,7 @@ internal static class ProfileView
 			ProfileView.DrawField("Free Company ID", profile.FreeCompanyId?.ToString() ?? "unknown");
 		}
 
-		if (!string.IsNullOrEmpty(profile.Bio))
-		{
-			var value = ProfileView.ClassifyCode(profile.Bio) is { } label
-				? $"{profile.Bio} ({label})"
-				: profile.Bio;
-			ProfileView.DrawField("Code", value);
-		}
 	}
-
-	private static string? ClassifyCode(string code) => code switch
-	{
-		_ when code.Any(char.IsLetter) && code == code.ToUpperInvariant() =>
-			"Maintainer verification code",
-		_ when code.Contains("claim", StringComparison.OrdinalIgnoreCase) => "Claim your character code",
-		_ when code.Contains("takedown", StringComparison.OrdinalIgnoreCase) => "Removal request code",
-		_ => null,
-	};
 
 	private static void DrawPrivateNotice(LodestoneProfile profile, PlayerLocalData? compareData)
 	{

@@ -245,9 +245,6 @@ public static class LodestoneParser
 		var freeCompanyName = CleanText(fcLink?.InnerText);
 		var freeCompanyId = ParseTrailingId(fcLink?.GetAttributeValue("href", null), "freecompany");
 
-		var bioNode = root.SelectSingleNode($"//div[{HasClass("character__selfintroduction")}]");
-		var bio = bioNode != null ? ParseBioCode(bioNode.InnerHtml) : null;
-
 		var classDataNode = root.SelectSingleNode($"//div[{HasClass("character__class__data")}]");
 		var (jobId, level) = ParseCurrentClassJobLevel(dataManager, classDataNode);
 
@@ -261,7 +258,6 @@ public static class LodestoneParser
 			Gender: gender,
 			FreeCompanyId: freeCompanyId,
 			FreeCompanyName: string.IsNullOrEmpty(freeCompanyName) ? null : freeCompanyName,
-			Bio: bio,
 			JobId: jobId,
 			Level: level);
 	}
@@ -460,16 +456,6 @@ public static class LodestoneParser
 		var lines = text.Split('\n', splitOptions);
 		var (_, gender) = lines.Length > 1 ? SplitSlashPair(lines[1]) : (null, null);
 		return gender ?? string.Empty;
-	}
-
-	private static string? ParseBioCode(string innerHtml)
-	{
-		var text = CleanMultilineHtml(innerHtml);
-		var splitOptions = StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries;
-		var lines = text.Split('\n', splitOptions);
-
-		return Array.Find(lines, line => line.Contains("ECHO", StringComparison.Ordinal))
-			?? Array.Find(lines, line => line.Contains("echo", StringComparison.Ordinal));
 	}
 
 	private static (string? First, string? Second) SplitSlashPair(string? text)
