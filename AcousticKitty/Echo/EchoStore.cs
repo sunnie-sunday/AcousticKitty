@@ -72,9 +72,11 @@ public sealed class EchoStore : IDisposable
 		{
 			var stopwatch = Stopwatch.StartNew();
 			var result = this.connection.Table<PinRow>()
-				.Select(pin => new PinnedCharacter(
-					pin.Key, pin.Name, (uint)pin.HomeWorldId, null, null,
-					UtcTimestamp.Parse(this.connection.Find<VerifiedRow>(pin.Key)!.VerifiedAtUtc)))
+				.Select(pin => (pin, verified: this.connection.Find<VerifiedRow>(pin.Key)))
+				.Where(row => row.verified != null)
+				.Select(row => new PinnedCharacter(
+					row.pin.Key, row.pin.Name, (uint)row.pin.HomeWorldId, null, null,
+					UtcTimestamp.Parse(row.verified!.VerifiedAtUtc)))
 				.ToArray();
 
 			this.log.Verbose(
