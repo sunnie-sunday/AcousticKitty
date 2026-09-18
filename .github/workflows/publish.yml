@@ -83,7 +83,7 @@ jobs:
           }
           $manifest | Add-Member -NotePropertyName DownloadCount -NotePropertyValue ([int]$downloadCount) -Force
 
-          $json = (@($manifest) | ConvertTo-Json -Depth 10) -replace "`r`n", "`n"
+          $json = (ConvertTo-Json -InputObject @($manifest) -Depth 10) -replace "`r`n", "`n"
           $contentB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($json))
 
           # Committing through the Contents API (rather than `git commit`/`git push`) for the "Verified" signature.
