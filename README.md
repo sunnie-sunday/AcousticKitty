@@ -17,7 +17,11 @@ registered as verified sightings contributors (stalkers).
 
 ## Install
 
-SOON&trade;
+```
+https://repo.echo-unvaulted.net
+```
+
+See instructions at https://github.com/sunnie-sunday/DalamudPlugins
 
 ## Network requirements
 
