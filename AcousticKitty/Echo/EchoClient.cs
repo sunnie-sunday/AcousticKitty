@@ -241,21 +241,39 @@ public sealed class EchoClient : IEchoClient
 			using var document = JsonDocument.Parse(text);
 			if (document.RootElement.TryGetProperty("description", out var description))
 			{
-				return description.GetString() ?? response.ReasonPhrase ?? "unknown error";
+				return description.GetString() ?? response.ReasonPhrase ??
+					EchoClient.DescribeNonStandardStatus(response.StatusCode) ?? "unknown error";
 			}
 
 			if (document.RootElement.TryGetProperty("error", out var error))
 			{
-				return error.GetString() ?? response.ReasonPhrase ?? "unknown error";
+				return error.GetString() ?? response.ReasonPhrase ??
+					EchoClient.DescribeNonStandardStatus(response.StatusCode) ?? "unknown error";
 			}
 
 			return text;
 		}
 		catch (JsonException)
 		{
-			return response.ReasonPhrase ?? $"HTTP {(int)response.StatusCode}";
+			return response.ReasonPhrase ??
+				EchoClient.DescribeNonStandardStatus(response.StatusCode) ??
+				$"HTTP {(int)response.StatusCode}";
 		}
 	}
+
+	private static string? DescribeNonStandardStatus(HttpStatusCode statusCode) =>
+		(int)statusCode switch
+		{
+			520 => "Cloudflare: Web Server Returned an Unknown Error",
+			521 => "Cloudflare: Web Server Is Down",
+			522 => "Cloudflare: Connection Timed Out",
+			523 => "Cloudflare: Origin Is Unreachable",
+			524 => "Cloudflare: A Timeout Occurred",
+			525 => "Cloudflare: SSL Handshake Failed",
+			526 => "Cloudflare: Invalid SSL Certificate",
+			530 => "Cloudflare: Origin Unavailable",
+			_ => null,
+		};
 
 	private static TimeSpan? ReadRetryAfter(HttpResponseMessage response)
 	{

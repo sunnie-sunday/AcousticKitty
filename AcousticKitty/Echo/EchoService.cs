@@ -28,14 +28,12 @@ public enum EchoQueueState
 
 public sealed class EchoService : IDisposable
 {
-	private static readonly TimeSpan SessionToVerifyDelay = TimeSpan.FromSeconds(10);
-
+	private static readonly TimeSpan SessionToVerifyDelayMin = TimeSpan.FromSeconds(5);
+	private static readonly TimeSpan SessionToVerifyDelayMax = TimeSpan.FromSeconds(10);
 	private static readonly TimeSpan DefaultRetryAfter = TimeSpan.FromSeconds(10);
-
 	private static readonly TimeSpan ApiDownRetryDelay = TimeSpan.FromSeconds(30);
-
+	private static readonly TimeSpan MaxCharacterBackoff = TimeSpan.FromMinutes(30);
 	private static readonly TimeSpan NoEligibleMatchPollInterval = TimeSpan.FromSeconds(1);
-
 	private static readonly TimeSpan SnapshotRebuildInterval = TimeSpan.FromSeconds(1);
 
 	private readonly IPlayerState playerState;
@@ -51,11 +49,13 @@ public sealed class EchoService : IDisposable
 	private readonly CancellationTokenSource disposalCts = new();
 
 	private readonly Dictionary<ulong, DateTime> nextEligibleAtUtc = new();
+	private readonly Dictionary<ulong, int> consecutiveFailures = new();
 	private volatile bool isProcessing;
 	private volatile EchoQueueState state = EchoQueueState.Idle;
 	private volatile string? statusReason;
 	private CancellationTokenSource? processingStopCts;
 
+	private DateTime globalRetryAtUtc = DateTime.MinValue;
 	private DateTime nextRetryUtc;
 	private DateTime lastSnapshotRebuildUtc = DateTime.MinValue;
 	private volatile IReadOnlyList<PendingMatch> pendingSnapshot = Array.Empty<PendingMatch>();
@@ -191,12 +191,20 @@ public sealed class EchoService : IDisposable
 		{
 			while (true)
 			{
+				if (DateTime.UtcNow < this.globalRetryAtUtc)
+				{
+					this.state = EchoQueueState.WaitingToRetry;
+					await Task.Delay(NoEligibleMatchPollInterval, stopCts.Token).ConfigureAwait(false);
+					continue;
+				}
+
 				var candidates = this.GetUnverifiedMatches();
 				if (candidates.Count == 0)
 				{
 					this.state = EchoQueueState.Idle;
 					this.statusReason = null;
 					this.nextEligibleAtUtc.Clear();
+					this.consecutiveFailures.Clear();
 					await Task.Delay(NoEligibleMatchPollInterval, stopCts.Token).ConfigureAwait(false);
 					continue;
 				}
@@ -222,6 +230,7 @@ public sealed class EchoService : IDisposable
 				}
 
 				this.nextEligibleAtUtc.Remove(match.ContentId);
+				this.consecutiveFailures.Remove(match.ContentId);
 				this.statusReason = null;
 			}
 		}
@@ -258,7 +267,9 @@ public sealed class EchoService : IDisposable
 
 			await attemptClient.CreateSessionAsync(registration, cancellationToken).ConfigureAwait(false);
 
-			await Task.Delay(SessionToVerifyDelay, cancellationToken).ConfigureAwait(false);
+			var sessionToVerifyDelay = TimeSpan.FromMilliseconds(Random.Shared.Next(
+				(int)SessionToVerifyDelayMin.TotalMilliseconds, (int)SessionToVerifyDelayMax.TotalMilliseconds));
+			await Task.Delay(sessionToVerifyDelay, cancellationToken).ConfigureAwait(false);
 
 			var homeWorldName = GameDataResolver.ResolveWorldName(this.dataManager, match.HomeWorldId);
 
@@ -276,14 +287,15 @@ public sealed class EchoService : IDisposable
 			if (outcome == EchoSaveOutcome.AlreadyPinned)
 			{
 				this.echoStore.Pin(cacheKey, match.CharacterName, match.HomeWorldId);
+
+				await this.avatarWorldHistory.DiscoverWorldHistoryAsync(
+					match.ContentId, this.lodestoneCache.TryGetResolvedAvatarUrlHash(cacheKey),
+					homeWorldName, cancellationToken).ConfigureAwait(false);
+
 				this.alreadyPinnedLogWriter.Write(
 					this.BuildAlreadyPinnedLogDetails(match, homeWorldName, cacheKey),
 					registerTranscript.ToString(),
 					verifyTranscript.ToString());
-
-				_ = this.avatarWorldHistory.DiscoverWorldHistoryAsync(
-					match.ContentId, this.lodestoneCache.TryGetResolvedAvatarUrlHash(cacheKey),
-					homeWorldName, cancellationToken);
 			}
 
 			this.echoStore.MarkVerified(cacheKey, DateTime.UtcNow);
@@ -299,23 +311,36 @@ public sealed class EchoService : IDisposable
 			var delay = ex.RetryAfter ?? DefaultRetryAfter;
 			this.statusReason = "Rate-limited by the Echo API";
 			this.nextRetryUtc = DateTime.UtcNow + delay;
+			this.globalRetryAtUtc = this.nextRetryUtc;
 			this.log.Debug(ex, $"Echo API rate-limited verifying {match.CharacterName}");
-			return delay;
+			return TimeSpan.Zero;
 		}
 		catch (EchoException ex)
 		{
 			this.statusReason = "Rejected by the Echo API";
-			this.nextRetryUtc = DateTime.UtcNow + DefaultRetryAfter;
+			var delay = this.RecordFailureAndGetBackoff(match.ContentId, DefaultRetryAfter);
+			this.nextRetryUtc = DateTime.UtcNow + delay;
 			this.log.Warning(ex, $"Echo API rejected verifying {match.CharacterName}");
-			return DefaultRetryAfter;
+			return delay;
 		}
 		catch (Exception ex)
 		{
 			this.statusReason = "The Echo API is unreachable";
-			this.nextRetryUtc = DateTime.UtcNow + ApiDownRetryDelay;
+			var delay = this.RecordFailureAndGetBackoff(match.ContentId, ApiDownRetryDelay);
+			this.nextRetryUtc = DateTime.UtcNow + delay;
 			this.log.Warning(ex, $"Echo API unreachable verifying {match.CharacterName}");
-			return ApiDownRetryDelay;
+			return delay;
 		}
+	}
+
+	private TimeSpan RecordFailureAndGetBackoff(ulong contentId, TimeSpan baseDelay)
+	{
+		var failures = this.consecutiveFailures.GetValueOrDefault(contentId, 0);
+		this.consecutiveFailures[contentId] = failures + 1;
+
+		var scaledTicks = baseDelay.Ticks * Math.Pow(2, failures);
+		var cappedTicks = Math.Min(scaledTicks, MaxCharacterBackoff.Ticks);
+		return TimeSpan.FromTicks((long)cappedTicks);
 	}
 
 	private AlreadyPinnedLogDetails BuildAlreadyPinnedLogDetails(
