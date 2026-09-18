@@ -6,6 +6,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AcousticKitty.Character;
@@ -23,11 +25,16 @@ public sealed class GroupSearchService(
 	IDataManager dataManager,
 	AvatarTextureCache avatarCache,
 	EchoService echo,
+	FreeCompanyIdIndex freeCompanyIdIndex,
 	IPluginLog log) : IDisposable
 {
 	private const int MaxRosterPages = 11;
 
 	private readonly CancellationTokenSource disposalCts = new();
+	private readonly object forceSearchGate = new();
+	private readonly HashSet<ulong> forceSearchedFreeCompanyIds = new();
+	private readonly object activeRosterFetchesGate = new();
+	private readonly Dictionary<ulong, string> activeRosterFetches = new();
 
 	private volatile GroupSearchState state = GroupSearchState.Idle;
 	private string? errorMessage;
@@ -46,6 +53,17 @@ public sealed class GroupSearchService(
 
 	public IReadOnlyList<GroupMemberViewModel> Members => this.members;
 
+	public IReadOnlyList<(ulong FreeCompanyId, string FreeCompanyName)> ActiveFreeCompanyRosterFetches
+	{
+		get
+		{
+			lock (this.activeRosterFetchesGate)
+			{
+				return this.activeRosterFetches.Select(pair => (pair.Key, pair.Value)).ToArray();
+			}
+		}
+	}
+
 	public IReadOnlyList<NameHistoryEntry> GetNameHistory(ulong contentId) =>
 		characterDirectory.GetNameHistory(contentId);
 
@@ -62,12 +80,50 @@ public sealed class GroupSearchService(
 	}
 
 	public void SelectGroup(GroupSearchResult group) =>
-		this.Restart(ct => this.RunRosterAsync(this.currentKind, group.Id, ct));
+		this.Restart(ct => this.RunRosterAsync(this.currentKind, group.Id, ct, group.Name));
 
 	public void Cancel()
 	{
 		this.searchCts?.Cancel();
 		this.state = GroupSearchState.Idle;
+	}
+
+	internal async Task ForceResolveFreeCompanyRosterAsync(ulong freeCompanyId, string freeCompanyName)
+	{
+		lock (this.forceSearchGate)
+		{
+			if (!this.forceSearchedFreeCompanyIds.Add(freeCompanyId))
+			{
+				return;
+			}
+		}
+
+		this.AddActiveRosterFetch(freeCompanyId, freeCompanyName);
+		try
+		{
+			await client
+				.GetGroupRosterAsync(
+					SocialGroupKind.FreeCompany,
+					freeCompanyId.ToString(CultureInfo.InvariantCulture),
+					MaxRosterPages,
+					dataManager,
+					(pageEntries, resolvedFreeCompanyName) => this.ResolveEntries(
+						pageEntries, freeCompanyId, resolvedFreeCompanyName ?? freeCompanyName,
+						prefetchAvatars: false, this.disposalCts.Token),
+					this.disposalCts.Token)
+				.ConfigureAwait(false);
+		}
+		catch (OperationCanceledException)
+		{
+		}
+		catch (Exception ex)
+		{
+			log.Error(ex, $"Failed to force-resolve Free Company roster {freeCompanyId}.");
+		}
+		finally
+		{
+			this.RemoveActiveRosterFetch(freeCompanyId);
+		}
 	}
 
 	public void Dispose()
@@ -141,13 +197,15 @@ public sealed class GroupSearchService(
 			return;
 		}
 
-		await this.RunRosterAsync(kind, matches[0].Id, cancellationToken).ConfigureAwait(false);
+		await this.RunRosterAsync(kind, matches[0].Id, cancellationToken, matches[0].Name)
+			.ConfigureAwait(false);
 	}
 
 	private async Task RunRosterAsync(
 		SocialGroupKind kind,
 		string groupId,
-		CancellationToken cancellationToken)
+		CancellationToken cancellationToken,
+		string? knownGroupName = null)
 	{
 		this.state = GroupSearchState.FetchingRoster;
 		this.groupMatches = Array.Empty<GroupSearchResult>();
@@ -157,15 +215,58 @@ public sealed class GroupSearchService(
 				? fcId
 				: (ulong?)null;
 
-		await client
-			.GetGroupRosterAsync(
-				kind, groupId, MaxRosterPages, dataManager,
-				(pageEntries, freeCompanyName) =>
-					this.AppendMembers(pageEntries, knownFreeCompanyId, freeCompanyName, cancellationToken),
-				cancellationToken)
-			.ConfigureAwait(false);
+		var nameTracked = false;
+		if (knownFreeCompanyId is { } upfrontId && knownGroupName != null)
+		{
+			this.AddActiveRosterFetch(upfrontId, knownGroupName);
+			nameTracked = true;
+		}
+
+		try
+		{
+			await client
+				.GetGroupRosterAsync(
+					kind, groupId, MaxRosterPages, dataManager,
+					(pageEntries, freeCompanyName) =>
+					{
+						if (!nameTracked && knownFreeCompanyId is { } id && freeCompanyName != null)
+						{
+							this.AddActiveRosterFetch(id, freeCompanyName);
+							nameTracked = true;
+						}
+
+						this.AppendMembers(
+							pageEntries, knownFreeCompanyId, freeCompanyName ?? knownGroupName,
+							cancellationToken);
+					},
+					cancellationToken)
+				.ConfigureAwait(false);
+		}
+		finally
+		{
+			if (knownFreeCompanyId is { } idToRemove)
+			{
+				this.RemoveActiveRosterFetch(idToRemove);
+			}
+		}
 
 		this.state = this.members.Count == 0 ? GroupSearchState.NotFound : GroupSearchState.Ready;
+	}
+
+	private void AddActiveRosterFetch(ulong freeCompanyId, string freeCompanyName)
+	{
+		lock (this.activeRosterFetchesGate)
+		{
+			this.activeRosterFetches[freeCompanyId] = freeCompanyName;
+		}
+	}
+
+	private void RemoveActiveRosterFetch(ulong freeCompanyId)
+	{
+		lock (this.activeRosterFetchesGate)
+		{
+			this.activeRosterFetches.Remove(freeCompanyId);
+		}
 	}
 
 	private void AppendMembers(
@@ -174,9 +275,20 @@ public sealed class GroupSearchService(
 		string? knownFreeCompanyName,
 		CancellationToken cancellationToken)
 	{
+		var resolved = this.ResolveEntries(
+			entries, knownFreeCompanyId, knownFreeCompanyName, prefetchAvatars: true, cancellationToken);
+		this.members = this.members.Concat(resolved).ToArray();
+	}
+
+	private List<GroupMemberViewModel> ResolveEntries(
+		IReadOnlyList<MemberListEntry> entries,
+		ulong? knownFreeCompanyId,
+		string? knownFreeCompanyName,
+		bool prefetchAvatars,
+		CancellationToken cancellationToken)
+	{
 		var stopwatch = Stopwatch.StartNew();
-		var collected = new List<GroupMemberViewModel>(this.members.Count + entries.Count);
-		collected.AddRange(this.members);
+		var collected = new List<GroupMemberViewModel>(entries.Count);
 
 		var resolvedIdUpdates = new List<(
 			string Key, ulong LodestoneId, string Name, uint HomeWorldId, DateTime ResolvedAtUtc,
@@ -246,19 +358,23 @@ public sealed class GroupSearchService(
 
 			collected.Add(viewModel);
 
-			var worldName = GameDataResolver.ResolveWorldName(dataManager, entry.HomeWorldId);
-			if (AvatarUrlBuilder.Build(entry.AvatarUrlHash, worldName) is { } prefetchUrl)
+			if (prefetchAvatars)
 			{
-				_ = avatarCache.GetOrFetchAsync(prefetchUrl, cancellationToken);
+				var worldName = GameDataResolver.ResolveWorldName(dataManager, entry.HomeWorldId);
+				if (AvatarUrlBuilder.Build(entry.AvatarUrlHash, worldName) is { } prefetchUrl)
+				{
+					_ = avatarCache.GetOrFetchAsync(prefetchUrl, cancellationToken);
+				}
 			}
 		}
 
 		lodestoneCache.SaveResolvedIds(resolvedIdUpdates);
 
-		this.members = collected.ToArray();
 		log.Verbose(
-			$"GroupSearchService.AppendMembers: {entries.Count} member(s) processed in " +
+			$"GroupSearchService.ResolveEntries: {entries.Count} member(s) processed in " +
 			$"{stopwatch.ElapsedMilliseconds} ms.");
+
+		return collected;
 	}
 
 	private async Task FetchMemberProfileAsync(GroupMemberViewModel member, string cacheKey)
@@ -284,6 +400,12 @@ public sealed class GroupSearchService(
 			{
 				member.Profile = profile;
 				member.ProfileFetchedAtUtc = fetchedAtUtc;
+				if (member.KnownCharacter is { } known)
+				{
+					freeCompanyIdIndex.Record(
+						known.Data.FreeCompanyTag, known.Data.HomeWorldId, profile.FreeCompanyId,
+						profile.FreeCompanyName);
+				}
 			}
 			else
 			{

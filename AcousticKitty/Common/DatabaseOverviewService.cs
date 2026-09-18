@@ -21,6 +21,8 @@ public sealed class DatabaseOverviewService(
 	CharacterDirectory characterDirectory,
 	IDataManager dataManager,
 	IPlayerState playerState,
+	GroupSearchService groupSearchService,
+	FreeCompanyIdIndex freeCompanyIdIndex,
 	IPluginLog log)
 {
 	private volatile IReadOnlyList<DatabaseEntryViewModel> pinned =
@@ -231,6 +233,16 @@ public sealed class DatabaseOverviewService(
 			}).ToArray();
 
 		this.hidden = hiddenList;
+
+		foreach (var known in hiddenKnown)
+		{
+			foreach (var (freeCompanyId, freeCompanyName) in freeCompanyIdIndex.GetFreeCompanies(
+				known.Data.FreeCompanyTag, known.Data.HomeWorldId))
+			{
+				_ = groupSearchService.ForceResolveFreeCompanyRosterAsync(freeCompanyId, freeCompanyName);
+			}
+		}
+
 		log.Verbose(
 			$"Reloaded Database Hidden tab: {this.hidden.Count} in {stopwatch.ElapsedMilliseconds} ms.");
 	}

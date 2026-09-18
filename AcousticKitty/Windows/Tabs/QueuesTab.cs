@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using AcousticKitty.Character;
 using AcousticKitty.Common;
+using AcousticKitty.Lodestone;
 using AcousticKitty.Echo;
 using AcousticKitty.Windows.Views;
 using Dalamud.Bindings.ImGui;
@@ -85,7 +86,18 @@ internal sealed class QueuesTab(Plugin plugin)
 		this.DrawQueue(
 			nearby.Queue, "The Lodestone search queue is empty.", this.lodestoneFilterCache,
 			ref this.lodestoneNameFilter, ref this.lodestonePage,
-			member => member.KnownCharacter.Data.Name, "LodestoneQueue", QueuesTab.DrawLodestoneRow);
+			member => member.KnownCharacter.Data.Name, "LodestoneQueue", QueuesTab.DrawLodestoneRow,
+			() => QueuesTab.DrawActiveFreeCompanyRows(plugin.GroupSearchService));
+	}
+
+	private static void DrawActiveFreeCompanyRows(GroupSearchService groupSearchService)
+	{
+		foreach (var entry in groupSearchService.ActiveFreeCompanyRosterFetches)
+		{
+			ImGui.TextUnformatted(entry.FreeCompanyName);
+			ImGui.TextColored(ImGuiColors.DalamudGrey3, $"Free Company ID: {entry.FreeCompanyId}");
+			ImGui.Separator();
+		}
 	}
 
 	private void DrawEchoQueue(
@@ -139,11 +151,12 @@ internal sealed class QueuesTab(Plugin plugin)
 		ref int page,
 		Func<T, string> nameSelector,
 		string idSuffix,
-		Action<T> drawRow)
+		Action<T> drawRow,
+		Action? drawPinnedRows = null)
 	{
 		ImGui.Spacing();
 
-		if (items.Count == 0)
+		if (items.Count == 0 && drawPinnedRows == null)
 		{
 			ImGui.TextWrapped(emptyMessage);
 			return;
@@ -153,7 +166,7 @@ internal sealed class QueuesTab(Plugin plugin)
 			PagedList.Apply(filterCache, items, nameFilter, nameSelector, ref page, PageSize);
 
 		PagedList.DrawScrollableList(
-			idSuffix, filteredCount, pageItems, "No characters match this filter.", drawRow);
+			idSuffix, filteredCount, pageItems, "No characters match this filter.", drawRow, drawPinnedRows);
 
 		PagedList.DrawFilterAndPagerFooter(ref nameFilter, ref page, totalPages, idSuffix);
 	}

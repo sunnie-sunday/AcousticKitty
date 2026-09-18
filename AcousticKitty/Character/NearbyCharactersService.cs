@@ -42,6 +42,8 @@ public sealed partial class NearbyCharactersService : IDisposable
 	private readonly CharacterDirectory characterDirectory;
 	private readonly Configuration configuration;
 	private readonly EchoService echo;
+	private readonly GroupSearchService groupSearch;
+	private readonly FreeCompanyIdIndex freeCompanyIdIndex;
 	private readonly IPluginLog log;
 	private readonly CancellationTokenSource disposalCts = new();
 
@@ -73,6 +75,8 @@ public sealed partial class NearbyCharactersService : IDisposable
 		CharacterDirectory characterDirectory,
 		Configuration configuration,
 		EchoService echo,
+		GroupSearchService groupSearch,
+		FreeCompanyIdIndex freeCompanyIdIndex,
 		IPluginLog log)
 	{
 		this.playerState = playerState;
@@ -86,6 +90,8 @@ public sealed partial class NearbyCharactersService : IDisposable
 		this.characterDirectory = characterDirectory;
 		this.configuration = configuration;
 		this.echo = echo;
+		this.groupSearch = groupSearch;
+		this.freeCompanyIdIndex = freeCompanyIdIndex;
 		this.log = log;
 
 		this.clientState.Logout += this.OnLogout;
@@ -398,8 +404,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 					.ConfigureAwait(false);
 				if (profile.Name != known.Data.Name || profile.HomeWorldId != known.Data.HomeWorldId)
 				{
-					this.characterDirectory.SetLookupResult(
-						contentId, null, NearbyLookupState.NotFound, null);
+					this.MarkHidden(known);
 					return;
 				}
 
@@ -420,8 +425,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 					.ConfigureAwait(false);
 				if (searchEntry == null)
 				{
-					this.characterDirectory.SetLookupResult(
-						contentId, null, NearbyLookupState.NotFound, null);
+					this.MarkHidden(known);
 					return;
 				}
 
@@ -448,7 +452,13 @@ public sealed partial class NearbyCharactersService : IDisposable
 			}
 
 			var saved = this.lodestoneCache.SaveCachedProfile(cacheKey, profile, DateTime.UtcNow);
-			if (!saved)
+			if (saved)
+			{
+				this.freeCompanyIdIndex.Record(
+					known.Data.FreeCompanyTag, known.Data.HomeWorldId, profile.FreeCompanyId,
+					profile.FreeCompanyName);
+			}
+			else
 			{
 				this.log.Warning(ProfileRegressionGuard.LogMessage(known.Data.Name));
 			}
@@ -459,14 +469,13 @@ public sealed partial class NearbyCharactersService : IDisposable
 		}
 		catch (LodestoneNotFoundException)
 		{
-			this.characterDirectory.SetLookupResult(contentId, null, NearbyLookupState.NotFound, null);
+			this.MarkHidden(known);
 		}
 		catch (LodestoneAccessRestrictedException)
 		{
 			if (overrideLodestoneId != null)
 			{
-				this.characterDirectory.SetLookupResult(
-					contentId, null, NearbyLookupState.NotFound, null);
+				this.MarkHidden(known);
 			}
 			else
 			{
@@ -486,6 +495,22 @@ public sealed partial class NearbyCharactersService : IDisposable
 		{
 			this.activeContentIdOrZero = 0;
 			this.RebuildQueueSnapshot();
+		}
+	}
+
+	private void MarkHidden(KnownCharacter known)
+	{
+		this.characterDirectory.SetLookupResult(
+			known.Data.ContentId, null, NearbyLookupState.NotFound, null);
+		this.TryForceResolveViaKnownFreeCompany(known);
+	}
+
+	private void TryForceResolveViaKnownFreeCompany(KnownCharacter known)
+	{
+		foreach (var (freeCompanyId, freeCompanyName) in this.freeCompanyIdIndex.GetFreeCompanies(
+			known.Data.FreeCompanyTag, known.Data.HomeWorldId))
+		{
+			_ = this.groupSearch.ForceResolveFreeCompanyRosterAsync(freeCompanyId, freeCompanyName);
 		}
 	}
 

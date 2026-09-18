@@ -221,6 +221,17 @@ public sealed partial class CharacterDirectory : IDisposable
 		}
 	}
 
+	public IReadOnlyList<KnownCharacter> GetAllWithFreeCompanyTag()
+	{
+		lock (this.gate)
+		{
+			return this.connection.Table<KnownCharacterRow>()
+				.Where(row => row.FreeCompanyTag != null && row.FreeCompanyTag != "")
+				.Select(ToKnownCharacter)
+				.ToArray();
+		}
+	}
+
 	public IReadOnlyList<string> GetAllNameWorldKeys()
 	{
 		lock (this.gate)

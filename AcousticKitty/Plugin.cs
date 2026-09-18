@@ -42,22 +42,17 @@ public sealed class Plugin : IDalamudPlugin
 	public readonly WindowSystem WindowSystem = new("AcousticKitty");
 
 	internal LodestoneClient LodestoneClient { get; }
-
 	internal IEchoClientFactory EchoClientFactory { get; }
-
 	internal EchoService EchoService { get; }
-
 	internal AvatarTextureCache AvatarTextureCache { get; }
-
 	internal GroupSearchService GroupSearchService { get; }
-
 	internal NearbyCharactersService NearbyCharactersService { get; }
-
 	internal DatabaseOverviewService DatabaseOverviewService { get; }
 
 	private readonly LodestoneCache lodestoneCache;
 	private readonly EchoStore echoStore;
 	private readonly CharacterDirectory characterDirectory;
+	private readonly FreeCompanyIdIndex freeCompanyIdIndex;
 	private readonly AvatarWorldHistoryService avatarWorldHistoryService;
 	private readonly MainWindow mainWindow;
 
@@ -74,6 +69,7 @@ public sealed class Plugin : IDalamudPlugin
 		this.echoStore = new EchoStore(PluginInterface.ConfigDirectory.FullName, Log);
 		this.characterDirectory =
 			new CharacterDirectory(PluginInterface.ConfigDirectory.FullName, Log);
+		this.freeCompanyIdIndex = new FreeCompanyIdIndex(this.characterDirectory, this.lodestoneCache);
 		this.avatarWorldHistoryService = new AvatarWorldHistoryService(
 			this.LodestoneClient, this.characterDirectory, DataManager, Log);
 		this.EchoClientFactory = new EchoClientFactory(this.Configuration, Log);
@@ -97,6 +93,7 @@ public sealed class Plugin : IDalamudPlugin
 			DataManager,
 			this.AvatarTextureCache,
 			this.EchoService,
+			this.freeCompanyIdIndex,
 			Log);
 		this.NearbyCharactersService = new NearbyCharactersService(
 			PlayerState,
@@ -110,10 +107,12 @@ public sealed class Plugin : IDalamudPlugin
 			this.characterDirectory,
 			this.Configuration,
 			this.EchoService,
+			this.GroupSearchService,
+			this.freeCompanyIdIndex,
 			Log);
 		this.DatabaseOverviewService = new DatabaseOverviewService(
 			this.lodestoneCache, this.echoStore, this.characterDirectory, DataManager, PlayerState,
-			Log);
+			this.GroupSearchService, this.freeCompanyIdIndex, Log);
 
 		this.mainWindow = new MainWindow(this);
 
