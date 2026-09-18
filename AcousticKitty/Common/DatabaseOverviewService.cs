@@ -126,8 +126,10 @@ public sealed class DatabaseOverviewService(
 				var nameHistory = known != null
 					? DatabaseOverviewService.LazyNameHistory(characterDirectory, known.Data.ContentId)
 					: null;
+
+				var (profile, profileFetchedAtUtc) = LodestoneProfile.ResolveOrPartial(cached, resolved);
 				return new DatabaseEntryViewModel(
-					pin.Key, pin.Name, worldName, true, cached?.Profile, cached?.FetchedAtUtc,
+					pin.Key, pin.Name, worldName, true, profile, profileFetchedAtUtc,
 					known?.Data, known?.LastSeenUtc, resolved?.AvatarUrlHash, dataCenterName,
 					NameHistory: nameHistory);
 			}).ToArray();
@@ -191,9 +193,11 @@ public sealed class DatabaseOverviewService(
 			var sortKey = wantVerified
 				? verifiedAtByKey.GetValueOrDefault(cacheKey)
 				: known.LastSeenUtc;
+
+			var (profile, profileFetchedAtUtc) = LodestoneProfile.ResolveOrPartial(cached, resolved);
 			return (Entry: new DatabaseEntryViewModel(
 				cacheKey, known.Data.Name, worldName, pinnedKeys.Contains(cacheKey),
-				cached?.Profile, cached?.FetchedAtUtc, known.Data, known.LastSeenUtc,
+				profile, profileFetchedAtUtc, known.Data, known.LastSeenUtc,
 				resolved?.AvatarUrlHash, dataCenterName,
 				NameHistory: DatabaseOverviewService.LazyNameHistory(
 					characterDirectory, known.Data.ContentId),
@@ -324,9 +328,11 @@ public sealed class DatabaseOverviewService(
 			var jobAbbreviation = resolved.JobId is { } jobId
 				? GameDataResolver.ResolveJobAbbreviation(dataManager, jobId)
 				: null;
+
+			var (profile, profileFetchedAtUtc) = LodestoneProfile.ResolveOrPartial(null, resolved);
 			var entry = new DatabaseEntryViewModel(
 				resolved.Key, resolved.Name, worldName, pinnedKeys.Contains(resolved.Key),
-				null, null, null, null, resolved.AvatarUrlHash, dataCenterName,
+				profile, profileFetchedAtUtc, null, null, resolved.AvatarUrlHash, dataCenterName,
 				jobAbbreviation, resolved.Level?.ToString());
 			unseenEntries.Add((entry, resolved.Key, resolved.ResolvedAtUtc));
 			unseenKeys.Add(resolved.Key);

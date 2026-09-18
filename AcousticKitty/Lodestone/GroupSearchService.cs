@@ -292,7 +292,8 @@ public sealed class GroupSearchService(
 
 		var resolvedIdUpdates = new List<(
 			string Key, ulong LodestoneId, string Name, uint HomeWorldId, DateTime ResolvedAtUtc,
-			string? AvatarUrlHash, int? Level, uint? JobId)>(entries.Count);
+			string? AvatarUrlHash, int? Level, uint? JobId, ulong? FreeCompanyId,
+			string? FreeCompanyName)>(entries.Count);
 
 		foreach (var rawEntry in entries)
 		{
@@ -327,33 +328,46 @@ public sealed class GroupSearchService(
 
 			resolvedIdUpdates.Add((
 				cacheKey, entry.CharacterId, entry.Name, entry.HomeWorldId, DateTime.UtcNow,
-				entry.AvatarUrlHash, entry.Level, entry.JobId));
+				entry.AvatarUrlHash, entry.Level, entry.JobId, entry.FreeCompanyId, entry.FreeCompanyName));
+
+			if (viewModel.KnownCharacter is { } matchedCharacter)
+			{
+				freeCompanyIdIndex.Record(
+					matchedCharacter.Data.FreeCompanyTag, matchedCharacter.Data.HomeWorldId,
+					entry.FreeCompanyId, entry.FreeCompanyName);
+			}
+
+			if (viewModel.KnownCharacter is {
+				LookupState: NearbyLookupState.Pending or NearbyLookupState.NotFound
+					or NearbyLookupState.Error,
+			} unresolved)
+			{
+				characterDirectory.SetLookupResult(
+					unresolved.Data.ContentId, entry.CharacterId, NearbyLookupState.Found, null);
+				echo.NotifyMatchConfirmed();
+				viewModel.KnownCharacter = characterDirectory.TryGetByContentId(unresolved.Data.ContentId);
+			}
 
 			viewModel.IsVerified = echoStore.IsVerified(cacheKey);
 			viewModel.IsPinned = echoStore.IsPinned(cacheKey);
 
-			if (viewModel.IsPinned ||
-				viewModel.KnownCharacter is
-					{ LookupState: NearbyLookupState.Found or NearbyLookupState.AccessRestricted })
+			if (viewModel.KnownCharacter is { LookupState: NearbyLookupState.AccessRestricted })
 			{
-				var cached = lodestoneCache.TryGetCachedProfile(cacheKey);
-				if (cached != null)
+				if (!this.TryApplyCachedProfile(viewModel, cacheKey))
 				{
-					viewModel.Profile = cached.Value.Profile;
-					viewModel.ProfileFetchedAtUtc = cached.Value.FetchedAtUtc;
+					viewModel.Profile = LodestoneProfile.BuildPartial(
+						entry.CharacterId, entry.Name, entry.HomeWorldId, entry.AvatarUrlHash,
+						entry.FreeCompanyId, entry.FreeCompanyName, entry.JobId, entry.Level);
 					viewModel.ProfileState = MemberProfileState.Loaded;
 				}
-				else if (viewModel.IsPinned)
+			}
+			else if (viewModel.IsPinned || viewModel.KnownCharacter is { LookupState: NearbyLookupState.Found })
+			{
+				if (!this.TryApplyCachedProfile(viewModel, cacheKey))
 				{
 					viewModel.ProfileState = MemberProfileState.Fetching;
 					_ = this.FetchMemberProfileAsync(viewModel, cacheKey);
 				}
-			}
-			else if (viewModel.KnownCharacter is
-				{ LookupState: NearbyLookupState.Pending or NearbyLookupState.NotFound })
-			{
-				viewModel.ProfileState = MemberProfileState.Fetching;
-				_ = this.FetchMemberProfileAsync(viewModel, cacheKey);
 			}
 
 			collected.Add(viewModel);
@@ -375,6 +389,20 @@ public sealed class GroupSearchService(
 			$"{stopwatch.ElapsedMilliseconds} ms.");
 
 		return collected;
+	}
+
+	private bool TryApplyCachedProfile(GroupMemberViewModel viewModel, string cacheKey)
+	{
+		var cached = lodestoneCache.TryGetCachedProfile(cacheKey);
+		if (cached == null)
+		{
+			return false;
+		}
+
+		viewModel.Profile = cached.Value.Profile;
+		viewModel.ProfileFetchedAtUtc = cached.Value.FetchedAtUtc;
+		viewModel.ProfileState = MemberProfileState.Loaded;
+		return true;
 	}
 
 	private async Task FetchMemberProfileAsync(GroupMemberViewModel member, string cacheKey)
@@ -412,7 +440,7 @@ public sealed class GroupSearchService(
 				log.Warning(ProfileRegressionGuard.LogMessage(member.Entry.Name));
 			}
 
-			this.LinkKnownCharacter(member);
+			this.LinkKnownCharacter(member, NearbyLookupState.Found);
 
 			member.ProfileState = MemberProfileState.Loaded;
 		}
@@ -426,7 +454,7 @@ public sealed class GroupSearchService(
 		}
 		catch (LodestoneAccessRestrictedException)
 		{
-			this.LinkKnownCharacter(member);
+			this.LinkKnownCharacter(member, NearbyLookupState.AccessRestricted);
 			member.ProfileState = MemberProfileState.AccessRestricted;
 		}
 		catch (Exception ex)
@@ -437,15 +465,14 @@ public sealed class GroupSearchService(
 		}
 	}
 
-	private void LinkKnownCharacter(GroupMemberViewModel member)
+	private void LinkKnownCharacter(GroupMemberViewModel member, NearbyLookupState state)
 	{
 		if (member.KnownCharacter is not { } known)
 		{
 			return;
 		}
 
-		characterDirectory.SetLookupResult(
-			known.Data.ContentId, member.Entry.CharacterId, NearbyLookupState.Found, null);
+		characterDirectory.SetLookupResult(known.Data.ContentId, member.Entry.CharacterId, state, null);
 		echo.NotifyMatchConfirmed();
 	}
 

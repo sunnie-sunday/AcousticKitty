@@ -22,12 +22,22 @@ public sealed class FreeCompanyIdIndex
 		var keys = tagged
 			.Select(known => CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId))
 			.ToArray();
+		var resolvedByKey = lodestoneCache.GetResolvedForKeys(keys)
+			.ToDictionary(entry => entry.Key);
 		var profilesByKey = lodestoneCache.GetCachedProfilesForKeys(keys)
 			.ToDictionary(entry => entry.Key);
 
 		foreach (var known in tagged)
 		{
 			var cacheKey = CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId);
+
+			if (resolvedByKey.TryGetValue(cacheKey, out var resolved))
+			{
+				this.Record(
+					known.Data.FreeCompanyTag, known.Data.HomeWorldId,
+					resolved.FreeCompanyId, resolved.FreeCompanyName);
+			}
+
 			if (profilesByKey.TryGetValue(cacheKey, out var cached))
 			{
 				this.Record(

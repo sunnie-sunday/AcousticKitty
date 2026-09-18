@@ -20,7 +20,33 @@ public sealed record LodestoneProfile(
 	string? FreeCompanyName,
 	string? Bio,
 	uint? JobId = null,
-	int? Level = null);
+	int? Level = null)
+{
+	public static LodestoneProfile BuildPartial(
+		ulong lodestoneId, string name, uint homeWorldId, string? avatarUrlHash,
+		ulong? freeCompanyId, string? freeCompanyName, uint? jobId, int? level) =>
+		new(lodestoneId, name, TitleId: null, homeWorldId, avatarUrlHash, IsPartiallyPrivate: true,
+			Gender: string.Empty, freeCompanyId, freeCompanyName, Bio: null, jobId, level);
+
+	public static (Lazy<LodestoneProfile>? Profile, DateTime? FetchedAtUtc) ResolveOrPartial(
+		CachedProfileEntry? cached, ResolvedCharacterEntry? resolved)
+	{
+		if (cached != null)
+		{
+			return (cached.Profile, cached.FetchedAtUtc);
+		}
+
+		if (resolved == null)
+		{
+			return (null, null);
+		}
+
+		var partial = LodestoneProfile.BuildPartial(
+			resolved.LodestoneId, resolved.Name, resolved.HomeWorldId, resolved.AvatarUrlHash,
+			resolved.FreeCompanyId, resolved.FreeCompanyName, resolved.JobId, resolved.Level);
+		return (new Lazy<LodestoneProfile>(() => partial), null);
+	}
+}
 
 public enum SocialGroupKind
 {
@@ -52,7 +78,9 @@ public sealed record ResolvedCharacterEntry(
 	DateTime ResolvedAtUtc,
 	string? AvatarUrlHash,
 	int? Level,
-	uint? JobId);
+	uint? JobId,
+	ulong? FreeCompanyId = null,
+	string? FreeCompanyName = null);
 
 public sealed record MemberListEntry(
 	ulong CharacterId,

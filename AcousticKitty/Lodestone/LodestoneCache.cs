@@ -51,6 +51,20 @@ public sealed partial class LodestoneCache : IDisposable
 		}
 	}
 
+	public ResolvedCharacterEntry? TryGetResolved(string key)
+	{
+		lock (this.gate)
+		{
+			var row = this.connection.Find<ResolvedCharacterRow>(key);
+			return row == null ? null : new ResolvedCharacterEntry(
+				row.Key, row.Name, (uint)row.HomeWorldId, (ulong)row.LodestoneId,
+				UtcTimestamp.Parse(row.ResolvedAtUtc), row.AvatarUrlHash, row.Level,
+				row.JobId.HasValue ? (uint)row.JobId.Value : null,
+				row.FreeCompanyId.HasValue ? (ulong)row.FreeCompanyId.Value : null,
+				row.FreeCompanyName);
+		}
+	}
+
 	public void DeleteCharacters(IEnumerable<string> keys)
 	{
 		var keyList = keys.ToList();
@@ -81,19 +95,23 @@ public sealed partial class LodestoneCache : IDisposable
 		DateTime resolvedAtUtc,
 		string? avatarUrlHash = null,
 		int? level = null,
-		uint? jobId = null)
+		uint? jobId = null,
+		ulong? freeCompanyId = null,
+		string? freeCompanyName = null)
 	{
 		lock (this.gate)
 		{
 			this.UpsertResolvedRow(
-				key, lodestoneId, name, homeWorldId, resolvedAtUtc, avatarUrlHash, level, jobId);
+				key, lodestoneId, name, homeWorldId, resolvedAtUtc, avatarUrlHash, level, jobId,
+				freeCompanyId, freeCompanyName);
 		}
 	}
 
 	public void SaveResolvedIds(
 		IReadOnlyList<(
 			string Key, ulong LodestoneId, string Name, uint HomeWorldId, DateTime ResolvedAtUtc,
-			string? AvatarUrlHash, int? Level, uint? JobId)> updates)
+			string? AvatarUrlHash, int? Level, uint? JobId, ulong? FreeCompanyId,
+			string? FreeCompanyName)> updates)
 	{
 		if (updates.Count == 0)
 		{
@@ -108,7 +126,8 @@ public sealed partial class LodestoneCache : IDisposable
 				{
 					this.UpsertResolvedRow(
 						update.Key, update.LodestoneId, update.Name, update.HomeWorldId,
-						update.ResolvedAtUtc, update.AvatarUrlHash, update.Level, update.JobId);
+						update.ResolvedAtUtc, update.AvatarUrlHash, update.Level, update.JobId,
+						update.FreeCompanyId, update.FreeCompanyName);
 				}
 			});
 		}
@@ -122,7 +141,9 @@ public sealed partial class LodestoneCache : IDisposable
 		DateTime resolvedAtUtc,
 		string? avatarUrlHash,
 		int? level,
-		uint? jobId)
+		uint? jobId,
+		ulong? freeCompanyId,
+		string? freeCompanyName)
 	{
 		var existing = this.connection.Find<ResolvedCharacterRow>(key);
 		var row = existing ?? new ResolvedCharacterRow { Key = key };
@@ -133,6 +154,8 @@ public sealed partial class LodestoneCache : IDisposable
 		row.AvatarUrlHash = avatarUrlHash ?? row.AvatarUrlHash;
 		row.Level = level ?? row.Level;
 		row.JobId = jobId.HasValue ? (long)jobId.Value : row.JobId;
+		row.FreeCompanyId = freeCompanyId.HasValue ? (long)freeCompanyId.Value : row.FreeCompanyId;
+		row.FreeCompanyName = freeCompanyName ?? row.FreeCompanyName;
 
 		if (existing == null)
 		{
@@ -185,6 +208,22 @@ public sealed partial class LodestoneCache : IDisposable
 
 			return (profile, UtcTimestamp.Parse(row.FetchedAtUtc));
 		}
+	}
+
+	public (LodestoneProfile? Profile, DateTime? FetchedAtUtc) ResolveProfileOrPartial(string key)
+	{
+		var cached = this.TryGetCachedProfile(key);
+		if (cached != null)
+		{
+			return (cached.Value.Profile, cached.Value.FetchedAtUtc);
+		}
+
+		var resolved = this.TryGetResolved(key);
+		return resolved != null
+			? (LodestoneProfile.BuildPartial(
+				resolved.LodestoneId, resolved.Name, resolved.HomeWorldId, resolved.AvatarUrlHash,
+				resolved.FreeCompanyId, resolved.FreeCompanyName, resolved.JobId, resolved.Level), null)
+			: (null, null);
 	}
 
 	public bool SaveCachedProfile(string key, LodestoneProfile profile, DateTime fetchedAtUtc)
@@ -242,7 +281,9 @@ public sealed partial class LodestoneCache : IDisposable
 				.Select(row => new ResolvedCharacterEntry(
 					row.Key, row.Name, (uint)row.HomeWorldId, (ulong)row.LodestoneId,
 					UtcTimestamp.Parse(row.ResolvedAtUtc), row.AvatarUrlHash,
-					row.Level, row.JobId.HasValue ? (uint)row.JobId.Value : null))
+					row.Level, row.JobId.HasValue ? (uint)row.JobId.Value : null,
+					row.FreeCompanyId.HasValue ? (ulong)row.FreeCompanyId.Value : null,
+					row.FreeCompanyName))
 				.ToArray();
 		}
 	}
@@ -282,7 +323,9 @@ public sealed partial class LodestoneCache : IDisposable
 					.Select(row => new ResolvedCharacterEntry(
 						row.Key, row.Name, (uint)row.HomeWorldId, (ulong)row.LodestoneId,
 						UtcTimestamp.Parse(row.ResolvedAtUtc), row.AvatarUrlHash,
-						row.Level, row.JobId.HasValue ? (uint)row.JobId.Value : null)));
+						row.Level, row.JobId.HasValue ? (uint)row.JobId.Value : null,
+						row.FreeCompanyId.HasValue ? (ulong)row.FreeCompanyId.Value : null,
+						row.FreeCompanyName)));
 			}
 		}
 
@@ -320,6 +363,10 @@ public sealed partial class LodestoneCache : IDisposable
 		public int? Level { get; set; }
 
 		public long? JobId { get; set; }
+
+		public long? FreeCompanyId { get; set; }
+
+		public string? FreeCompanyName { get; set; }
 	}
 
 	[Table("CachedProfiles")]

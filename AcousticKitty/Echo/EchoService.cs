@@ -4,6 +4,7 @@
 // SPDX-FileContributor: Contributions by /xivg/
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -35,7 +36,6 @@ public sealed class EchoService : IDisposable
 	private static readonly TimeSpan MaxCharacterBackoff = TimeSpan.FromMinutes(30);
 	private static readonly TimeSpan NoEligibleMatchPollInterval = TimeSpan.FromSeconds(1);
 	private static readonly TimeSpan SnapshotRebuildInterval = TimeSpan.FromSeconds(1);
-
 	private static readonly TimeSpan AutoStartCheckInterval = TimeSpan.FromSeconds(5);
 
 	private readonly IFramework framework;
@@ -52,9 +52,9 @@ public sealed class EchoService : IDisposable
 
 	private DateTime lastAutoStartCheckUtc = DateTime.MinValue;
 
-	private readonly Dictionary<ulong, DateTime> nextEligibleAtUtc = new();
-	private readonly Dictionary<ulong, int> consecutiveFailures = new();
-	private volatile bool isProcessing;
+	private readonly ConcurrentDictionary<ulong, DateTime> nextEligibleAtUtc = new();
+	private readonly ConcurrentDictionary<ulong, int> consecutiveFailures = new();
+	private int isProcessingFlag;
 	private volatile EchoQueueState state = EchoQueueState.Idle;
 	private volatile string? statusReason;
 	private CancellationTokenSource? processingStopCts;
@@ -131,27 +131,19 @@ public sealed class EchoService : IDisposable
 
 	public int PendingVerifyCount => this.PendingVerifications.Count;
 
-	public bool IsProcessing => this.isProcessing;
+	public bool IsProcessing => this.isProcessingFlag != 0;
 
 	public void NotifyMatchConfirmed()
 	{
 		DatabaseCapEnforcer.EnforceUnverified(this.characterDirectory, this.lodestoneCache, this.echoStore);
 
-		if (!this.isProcessing && this.configuration.EchoQueueMode == EchoQueueMode.Auto)
+		if (this.isProcessingFlag == 0 && this.configuration.EchoQueueMode == EchoQueueMode.Auto)
 		{
 			_ = this.ProcessQueueAsync();
 		}
 	}
 
-	public void StartQueue()
-	{
-		if (this.isProcessing)
-		{
-			return;
-		}
-
-		_ = this.ProcessQueueAsync();
-	}
+	public void StartQueue() => _ = this.ProcessQueueAsync();
 
 	public void StopQueue() => this.processingStopCts?.Cancel();
 
@@ -176,7 +168,7 @@ public sealed class EchoService : IDisposable
 
 		this.lastAutoStartCheckUtc = now;
 
-		if (!this.isProcessing && this.configuration.EchoQueueMode == EchoQueueMode.Auto)
+		if (this.isProcessingFlag == 0 && this.configuration.EchoQueueMode == EchoQueueMode.Auto)
 		{
 			_ = this.ProcessQueueAsync();
 		}
@@ -202,12 +194,11 @@ public sealed class EchoService : IDisposable
 
 	private async Task ProcessQueueAsync()
 	{
-		if (this.isProcessing)
+		if (Interlocked.CompareExchange(ref this.isProcessingFlag, 1, 0) != 0)
 		{
 			return;
 		}
 
-		this.isProcessing = true;
 		var stopCts = CancellationTokenSource.CreateLinkedTokenSource(this.disposalCts.Token);
 		this.processingStopCts = stopCts;
 		try
@@ -263,8 +254,8 @@ public sealed class EchoService : IDisposable
 					continue;
 				}
 
-				this.nextEligibleAtUtc.Remove(match.ContentId);
-				this.consecutiveFailures.Remove(match.ContentId);
+				this.nextEligibleAtUtc.TryRemove(match.ContentId, out _);
+				this.consecutiveFailures.TryRemove(match.ContentId, out _);
 				this.statusReason = null;
 			}
 		}
@@ -273,7 +264,7 @@ public sealed class EchoService : IDisposable
 		}
 		finally
 		{
-			this.isProcessing = false;
+			this.isProcessingFlag = 0;
 			this.processingStopCts = null;
 			this.state = EchoQueueState.Paused;
 			stopCts.Dispose();
@@ -377,8 +368,8 @@ public sealed class EchoService : IDisposable
 		var data = known.Data;
 
 		var profile = this.lodestoneCache.TryGetCachedProfile(cacheKey)?.Profile;
-		var avatarUrl = ProfileView.ResolveAvatarUrl(
-			profile, this.lodestoneCache.TryGetResolvedAvatarUrlHash(cacheKey), homeWorldName)!;
+		var resolved = this.lodestoneCache.TryGetResolved(cacheKey);
+		var avatarUrl = ProfileView.ResolveAvatarUrl(profile, resolved?.AvatarUrlHash, homeWorldName)!;
 
 		var history = this.characterDirectory.GetNameHistory(match.ContentId);
 		var akaEntries = history
@@ -406,8 +397,8 @@ public sealed class EchoService : IDisposable
 			GameDataResolver.ResolveJobAbbreviation(this.dataManager, data.JobId),
 			data.Level,
 			match.LodestoneId,
-			profile?.FreeCompanyName,
-			profile?.FreeCompanyId,
+			profile?.FreeCompanyName ?? resolved?.FreeCompanyName,
+			profile?.FreeCompanyId ?? resolved?.FreeCompanyId,
 			akaEntries.Length > 0 ? string.Join(", ", akaEntries) : null,
 			worlds.Length > 1 ? string.Join(", ", worlds) : null);
 	}
