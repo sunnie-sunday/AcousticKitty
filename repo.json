@@ -1,25 +1,27 @@
-{
-  "Author": "Sunnie Sunday",
-  "Name": "Acoustic Kitty",
-  "InternalName": "AcousticKitty",
-  "AssemblyVersion": "0.1.2.0",
-  "Description": "Cross-references nearby in-game characters against their Lodestone profile, and builds an audit queue against EchoVault's registration to see if they're already verified sightings contributors. Echo's API used to find stalkers can optionally be routed through a SOCKS5 proxy.",
-  "ApplicableVersion": "any",
-  "RepoUrl": "https://github.com/sunnie-sunday/AcousticKitty",
-  "Tags": [
-    "Lodestone",
-    "Character",
-    "Profile"
-  ],
-  "DalamudApiLevel": 15,
-  "LoadRequiredState": 0,
-  "LoadSync": false,
-  "CanUnloadAsync": false,
-  "LoadPriority": 0,
-  "IconUrl": "https://raw.githubusercontent.com/sunnie-sunday/AcousticKitty/main/images/icon.png",
-  "Punchline": "Counterintelligence plugin.",
-  "AcceptsFeedback": true,
-  "DownloadLinkInstall": "https://github.com/sunnie-sunday/AcousticKitty/releases/download/v0.1.2/latest.zip",
-  "DownloadLinkUpdate": "https://github.com/sunnie-sunday/AcousticKitty/releases/download/v0.1.2/latest.zip",
-  "DownloadCount": 0
-}
+[
+  {
+    "Author": "Sunnie Sunday",
+    "Name": "Acoustic Kitty",
+    "InternalName": "AcousticKitty",
+    "AssemblyVersion": "0.1.3.0",
+    "Description": "Cross-references nearby in-game characters against their Lodestone profile, and builds an audit queue against EchoVault's registration to see if they're already verified sightings contributors. Echo's API used to find stalkers can optionally be routed through a SOCKS5 proxy.",
+    "ApplicableVersion": "any",
+    "RepoUrl": "https://github.com/sunnie-sunday/AcousticKitty",
+    "Tags": [
+      "Lodestone",
+      "Character",
+      "Profile"
+    ],
+    "DalamudApiLevel": 15,
+    "LoadRequiredState": 0,
+    "LoadSync": false,
+    "CanUnloadAsync": false,
+    "LoadPriority": 0,
+    "IconUrl": "https://raw.githubusercontent.com/sunnie-sunday/AcousticKitty/main/images/icon.png",
+    "Punchline": "Counterintelligence plugin.",
+    "AcceptsFeedback": true,
+    "DownloadLinkInstall": "https://github.com/sunnie-sunday/AcousticKitty/releases/download/v0.1.3/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/sunnie-sunday/AcousticKitty/releases/download/v0.1.3/latest.zip",
+    "DownloadCount": 0
+  }
+]
