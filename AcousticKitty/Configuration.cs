@@ -17,13 +17,9 @@ public sealed class Configuration : IPluginConfiguration
 	public int Version { get; set; } = 1;
 
 	public ProxyMode EchoProxyMode { get; set; } = ProxyMode.Socks5;
-
 	public string EchoProxyHost { get; set; } = "localhost";
-
 	public int EchoProxyPort { get; set; } = 1080;
-
 	public string EchoProxyUsername { get; set; } = string.Empty;
-
 	public string EchoProxyEncryptedPassword { get; set; } = string.Empty;
 
 	[JsonIgnore]
@@ -34,8 +30,7 @@ public sealed class Configuration : IPluginConfiguration
 	}
 
 	public NearbySearchMode NearbySearchMode { get; set; } = NearbySearchMode.Manual;
-
-	public EchoQueueMode EchoQueueMode { get; set; } = EchoQueueMode.Auto;
+	public EchoQueueMode EchoQueueMode { get; set; } = EchoQueueMode.Manual;
 
 	public void Save()
 	{

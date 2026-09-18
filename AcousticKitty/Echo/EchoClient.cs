@@ -56,9 +56,9 @@ public sealed class EchoClientFactory(Configuration configuration, IPluginLog lo
 
 public sealed class EchoClient : IEchoClient
 {
-	internal const string ApiHost = "localhost";
+	internal const string ApiHost = "https://echovault.gg";
 
-	internal const string PluginVersion = "0.0.1";
+	internal const string PluginVersion = "0.8.4";
 
 	internal const int ProtocolVersion = 2;
 

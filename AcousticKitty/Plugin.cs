@@ -35,7 +35,7 @@ public sealed class Plugin : IDalamudPlugin
 
 	#region Plugin Services
 
-	private const string CommandName = "/lodestone";
+	private const string CommandName = "/akitty";
 
 	public Configuration Configuration { get; }
 
