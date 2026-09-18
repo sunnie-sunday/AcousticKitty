@@ -1,0 +1,105 @@
+name: Publish
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v5
+
+      - name: Verify tag matches csproj Version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}" -replace '^v', ''
+          $csproj = [xml](Get-Content AcousticKitty/AcousticKitty.csproj)
+          $version = $csproj.Project.PropertyGroup.Version | Select-Object -First 1
+          $versionCore = ($version -split '\.')[0..2] -join '.'
+          if ($tag -ne $versionCore) {
+            Write-Error "Tag v$tag does not match <Version>$version</Version> in AcousticKitty.csproj"
+            exit 1
+          }
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Download Dalamud
+        run: |
+          Invoke-WebRequest -Uri https://goatcorp.github.io/dalamud-distrib/latest.zip -OutFile latest.zip
+          Expand-Archive -Force latest.zip "$env:AppData\XIVLauncher\addon\Hooks\dev"
+
+      - name: Build
+        run: dotnet build --configuration Release
+
+      - name: Normalize zip path separators
+        shell: pwsh
+        run: |
+          $zipPath = "AcousticKitty/bin/Release/AcousticKitty/latest.zip"
+          $extractDir = "AcousticKitty/bin/Release/AcousticKitty/latest-extracted"
+
+          Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+          Remove-Item $zipPath
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::CreateFromDirectory(
+            $extractDir, $zipPath, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+
+          Remove-Item -Recurse -Force $extractDir
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" `
+            "AcousticKitty/bin/Release/AcousticKitty/latest.zip" `
+            --title "${{ github.ref_name }}" `
+            --generate-notes
+
+      - name: Regenerate repo.json (verified commit via GitHub API)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $manifest = Get-Content "AcousticKitty/bin/Release/AcousticKitty/AcousticKitty.json" | ConvertFrom-Json
+          $downloadUrl = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/latest.zip"
+          $manifest | Add-Member -NotePropertyName DownloadLinkInstall -NotePropertyValue $downloadUrl
+          $manifest | Add-Member -NotePropertyName DownloadLinkUpdate -NotePropertyValue $downloadUrl
+
+          # Get download count from GitHub's per-release telemetry (capped at 100 releases)
+          try {
+            $downloadCount = gh api --method GET "repos/${{ github.repository }}/releases" -f per_page=100 --jq '[.[].assets[].download_count] | add // 0'
+          } catch {
+            Write-Warning "Failed to fetch release download counts, defaulting to 0: $_"
+            $downloadCount = 0
+          }
+          $manifest | Add-Member -NotePropertyName DownloadCount -NotePropertyValue ([int]$downloadCount) -Force
+
+          $json = (@($manifest) | ConvertTo-Json -Depth 10) -replace "`r`n", "`n"
+          $contentB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($json))
+
+          # Committing through the Contents API (rather than `git commit`/`git push`) for the "Verified" signature.
+          # A 404 here is expected on the very first publish, before repo.json exists.
+          $sha = $null
+          try {
+            $existing = gh api "repos/${{ github.repository }}/contents/repo.json?ref=main" 2>$null | ConvertFrom-Json
+            $sha = $existing.sha
+          } catch {}
+
+          $body = [ordered]@{
+            message = "Publish ${{ github.ref_name }} to repo.json"
+            content = $contentB64
+            branch  = "main"
+          }
+          if ($sha) { $body.sha = $sha }
+          $body | ConvertTo-Json | Set-Content -Path repo-commit-body.json -Encoding utf8
+
+          gh api "repos/${{ github.repository }}/contents/repo.json" -X PUT --input repo-commit-body.json
