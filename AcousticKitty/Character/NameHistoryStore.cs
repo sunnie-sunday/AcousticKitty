@@ -15,11 +15,13 @@ internal sealed partial class NameHistoryStore
 {
 	private readonly SQLiteConnection connection;
 	private readonly object gate;
+	private readonly Func<bool> isDisposed;
 
-	public NameHistoryStore(SQLiteConnection connection, object gate)
+	public NameHistoryStore(SQLiteConnection connection, object gate, Func<bool> isDisposed)
 	{
 		this.connection = connection;
 		this.gate = gate;
+		this.isDisposed = isDisposed;
 		this.connection.CreateTable<NameHistoryRow>();
 	}
 
@@ -28,6 +30,11 @@ internal sealed partial class NameHistoryStore
 	{
 		lock (this.gate)
 		{
+			if (this.isDisposed())
+			{
+				return;
+			}
+
 			this.connection.Insert(new NameHistoryRow
 			{
 				ContentId = (long)contentId,
@@ -42,6 +49,11 @@ internal sealed partial class NameHistoryStore
 	{
 		lock (this.gate)
 		{
+			if (this.isDisposed())
+			{
+				return Array.Empty<string>();
+			}
+
 			return this.connection.Table<NameHistoryRow>()
 				.Where(row => row.ContentId == (long)contentId)
 				.Select(row => row.HomeWorldName)
@@ -53,6 +65,11 @@ internal sealed partial class NameHistoryStore
 	{
 		lock (this.gate)
 		{
+			if (this.isDisposed())
+			{
+				return Array.Empty<NameHistoryEntry>();
+			}
+
 			return this.connection.Table<NameHistoryRow>()
 				.Where(row => row.ContentId == (long)contentId)
 				.OrderByDescending(row => row.Id)
@@ -66,6 +83,11 @@ internal sealed partial class NameHistoryStore
 	{
 		lock (this.gate)
 		{
+			if (this.isDisposed())
+			{
+				return;
+			}
+
 			this.connection.Table<NameHistoryRow>().Delete(row => contentIds.Contains(row.ContentId));
 		}
 	}

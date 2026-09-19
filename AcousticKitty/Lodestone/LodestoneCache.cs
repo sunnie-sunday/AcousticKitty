@@ -20,6 +20,7 @@ public sealed partial class LodestoneCache : IDisposable
 
 	private readonly SQLiteConnection connection;
 	private readonly object gate = new();
+	private bool disposed;
 
 	#region Public API
 
@@ -31,13 +32,18 @@ public sealed partial class LodestoneCache : IDisposable
 		this.connection = new SQLiteConnection(databasePath);
 		this.connection.CreateTable<ResolvedCharacterRow>();
 		this.connection.CreateTable<CachedProfileRow>();
-		DatabaseVacuum.RunInBackground(this.connection, this.gate);
+		DatabaseVacuum.RunInBackground(this.connection, this.gate, () => this.disposed);
 	}
 
 	public ulong? TryGetResolvedId(string key)
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return null;
+			}
+
 			var row = this.connection.Find<ResolvedCharacterRow>(key);
 			return row != null ? (ulong)row.LodestoneId : null;
 		}
@@ -47,6 +53,11 @@ public sealed partial class LodestoneCache : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return null;
+			}
+
 			return this.connection.Find<ResolvedCharacterRow>(key)?.AvatarUrlHash;
 		}
 	}
@@ -55,6 +66,11 @@ public sealed partial class LodestoneCache : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return null;
+			}
+
 			var row = this.connection.Find<ResolvedCharacterRow>(key);
 			return row == null ? null : new ResolvedCharacterEntry(
 				row.Key, row.Name, (uint)row.HomeWorldId, (ulong)row.LodestoneId,
@@ -75,6 +91,11 @@ public sealed partial class LodestoneCache : IDisposable
 
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return;
+			}
+
 			this.connection.RunInTransaction(() =>
 			{
 				foreach (var chunk in keyList.Chunk(BulkQueryBatchSize))
@@ -101,6 +122,11 @@ public sealed partial class LodestoneCache : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return;
+			}
+
 			this.UpsertResolvedRow(
 				key, lodestoneId, name, homeWorldId, resolvedAtUtc, avatarUrlHash, level, jobId,
 				freeCompanyId, freeCompanyName);
@@ -120,6 +146,11 @@ public sealed partial class LodestoneCache : IDisposable
 
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return;
+			}
+
 			this.connection.RunInTransaction(() =>
 			{
 				foreach (var update in updates)
@@ -176,6 +207,11 @@ public sealed partial class LodestoneCache : IDisposable
 
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return;
+			}
+
 			this.connection.RunInTransaction(() =>
 			{
 				KeyedRowMigration.Migrate<ResolvedCharacterRow>(this.connection, oldKey, newKey, row =>
@@ -194,6 +230,11 @@ public sealed partial class LodestoneCache : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return null;
+			}
+
 			var row = this.connection.Find<CachedProfileRow>(key);
 			if (row == null)
 			{
@@ -230,6 +271,11 @@ public sealed partial class LodestoneCache : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return false;
+			}
+
 			var existing = this.connection.Find<CachedProfileRow>(key);
 			LodestoneProfile? previous = null;
 			if (existing != null)
@@ -260,6 +306,11 @@ public sealed partial class LodestoneCache : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return Array.Empty<CachedProfileEntry>();
+			}
+
 			var result = new List<CachedProfileEntry>();
 			foreach (var row in this.connection.Table<CachedProfileRow>())
 			{
@@ -277,6 +328,11 @@ public sealed partial class LodestoneCache : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return Array.Empty<ResolvedCharacterEntry>();
+			}
+
 			return this.connection.Table<ResolvedCharacterRow>()
 				.Select(row => new ResolvedCharacterEntry(
 					row.Key, row.Name, (uint)row.HomeWorldId, (ulong)row.LodestoneId,
@@ -296,6 +352,11 @@ public sealed partial class LodestoneCache : IDisposable
 			var chunkKeys = chunk.ToList();
 			lock (this.gate)
 			{
+				if (this.disposed)
+				{
+					return result;
+				}
+
 				foreach (var row in this.connection.Table<CachedProfileRow>()
 					.Where(row => chunkKeys.Contains(row.Key)))
 				{
@@ -318,6 +379,11 @@ public sealed partial class LodestoneCache : IDisposable
 			var chunkKeys = chunk.ToList();
 			lock (this.gate)
 			{
+				if (this.disposed)
+				{
+					return result;
+				}
+
 				result.AddRange(this.connection.Table<ResolvedCharacterRow>()
 					.Where(row => chunkKeys.Contains(row.Key))
 					.Select(row => new ResolvedCharacterEntry(
@@ -336,6 +402,7 @@ public sealed partial class LodestoneCache : IDisposable
 	{
 		lock (this.gate)
 		{
+			this.disposed = true;
 			this.connection.Dispose();
 		}
 	}

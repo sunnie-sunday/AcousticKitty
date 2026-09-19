@@ -24,6 +24,7 @@ public sealed partial class CharacterDirectory : IDisposable
 	private readonly object gate = new();
 	private readonly IPluginLog log;
 	private readonly NameHistoryStore nameHistory;
+	private bool disposed;
 
 	#region Public API
 
@@ -38,14 +39,19 @@ public sealed partial class CharacterDirectory : IDisposable
 
 		this.connection = new SQLiteConnection(databasePath);
 		this.connection.CreateTable<KnownCharacterRow>();
-		this.nameHistory = new NameHistoryStore(this.connection, this.gate);
-		DatabaseVacuum.RunInBackground(this.connection, this.gate);
+		this.nameHistory = new NameHistoryStore(this.connection, this.gate, () => this.disposed);
+		DatabaseVacuum.RunInBackground(this.connection, this.gate, () => this.disposed);
 	}
 
 	public KnownCharacter? TryGetByContentId(ulong contentId)
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return null;
+			}
+
 			var row = this.connection.Find<KnownCharacterRow>((long)contentId);
 			return row == null ? null : ToKnownCharacter(row);
 		}
@@ -55,6 +61,11 @@ public sealed partial class CharacterDirectory : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return null;
+			}
+
 			var row = this.connection.Table<KnownCharacterRow>()
 				.FirstOrDefault(r => r.NameWorldKey == nameWorldKey);
 			return row == null ? null : ToKnownCharacter(row);
@@ -65,6 +76,11 @@ public sealed partial class CharacterDirectory : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return null;
+			}
+
 			var row = this.connection.Table<KnownCharacterRow>()
 				.FirstOrDefault(r => r.LodestoneId == (long)lodestoneId);
 			return row == null ? null : ToKnownCharacter(row);
@@ -75,6 +91,11 @@ public sealed partial class CharacterDirectory : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return;
+			}
+
 			var row = this.connection.Find<KnownCharacterRow>((long)contentId);
 			if (row == null)
 			{
@@ -99,6 +120,11 @@ public sealed partial class CharacterDirectory : IDisposable
 
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return;
+			}
+
 			this.connection.RunInTransaction(() =>
 			{
 				foreach (var snapshot in snapshots)
@@ -116,6 +142,11 @@ public sealed partial class CharacterDirectory : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return;
+			}
+
 			var row = this.connection.Find<KnownCharacterRow>((long)contentId);
 			if (row == null)
 			{
@@ -149,6 +180,11 @@ public sealed partial class CharacterDirectory : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return;
+			}
+
 			var row = this.connection.Find<KnownCharacterRow>((long)contentId);
 			if (row == null)
 			{
@@ -169,6 +205,11 @@ public sealed partial class CharacterDirectory : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return Array.Empty<KnownCharacter>();
+			}
+
 			var prioritized = this.connection.Table<KnownCharacterRow>()
 				.Where(row =>
 					row.LookupState == (int)NearbyLookupState.Pending && row.PriorityAtUtc != null)
@@ -199,6 +240,11 @@ public sealed partial class CharacterDirectory : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return Array.Empty<KnownCharacter>();
+			}
+
 			return this.connection.Table<KnownCharacterRow>()
 				.Where(row =>
 					row.LookupState == (int)NearbyLookupState.Found ||
@@ -213,6 +259,11 @@ public sealed partial class CharacterDirectory : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return Array.Empty<KnownCharacter>();
+			}
+
 			return this.connection.Table<KnownCharacterRow>()
 				.Where(row => row.LookupState == (int)NearbyLookupState.NotFound)
 				.OrderBy(row => row.LastSeenUtc)
@@ -225,6 +276,11 @@ public sealed partial class CharacterDirectory : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return Array.Empty<KnownCharacter>();
+			}
+
 			return this.connection.Table<KnownCharacterRow>()
 				.Where(row => row.FreeCompanyTag != null && row.FreeCompanyTag != "")
 				.Select(ToKnownCharacter)
@@ -236,6 +292,11 @@ public sealed partial class CharacterDirectory : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return Array.Empty<string>();
+			}
+
 			return this.connection.Query<NameWorldKeyRow>("SELECT NameWorldKey FROM KnownCharacters")
 				.Select(row => row.NameWorldKey)
 				.ToArray();
@@ -252,6 +313,11 @@ public sealed partial class CharacterDirectory : IDisposable
 
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return;
+			}
+
 			this.connection.RunInTransaction(() =>
 			{
 				foreach (var chunk in ids.Chunk(BulkQueryBatchSize))
@@ -277,6 +343,7 @@ public sealed partial class CharacterDirectory : IDisposable
 	{
 		lock (this.gate)
 		{
+			this.disposed = true;
 			this.connection.Dispose();
 		}
 	}

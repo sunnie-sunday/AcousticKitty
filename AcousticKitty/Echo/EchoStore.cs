@@ -22,6 +22,7 @@ public sealed class EchoStore : IDisposable
 	private readonly SQLiteConnection connection;
 	private readonly object gate = new();
 	private readonly IPluginLog log;
+	private bool disposed;
 
 	#region Public API
 
@@ -34,13 +35,18 @@ public sealed class EchoStore : IDisposable
 		this.connection = new SQLiteConnection(databasePath);
 		this.connection.CreateTable<PinRow>();
 		this.connection.CreateTable<VerifiedRow>();
-		DatabaseVacuum.RunInBackground(this.connection, this.gate);
+		DatabaseVacuum.RunInBackground(this.connection, this.gate, () => this.disposed);
 	}
 
 	public void Pin(string key, string name, uint homeWorldId)
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return;
+			}
+
 			this.connection.InsertOrReplace(new PinRow
 			{
 				Key = key,
@@ -54,6 +60,11 @@ public sealed class EchoStore : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return false;
+			}
+
 			return this.connection.Find<PinRow>(key) != null;
 		}
 	}
@@ -62,6 +73,11 @@ public sealed class EchoStore : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return false;
+			}
+
 			return this.connection.Find<VerifiedRow>(key) != null;
 		}
 	}
@@ -70,6 +86,11 @@ public sealed class EchoStore : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return Array.Empty<PinnedCharacter>();
+			}
+
 			var stopwatch = Stopwatch.StartNew();
 			var result = this.connection.Table<PinRow>()
 				.Select(pin => (pin, verified: this.connection.Find<VerifiedRow>(pin.Key)))
@@ -90,6 +111,11 @@ public sealed class EchoStore : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return;
+			}
+
 			this.connection.InsertOrReplace(new VerifiedRow
 			{
 				Key = key,
@@ -102,6 +128,11 @@ public sealed class EchoStore : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return new HashSet<string>();
+			}
+
 			return this.connection.Table<VerifiedRow>().Select(row => row.Key).ToHashSet();
 		}
 	}
@@ -110,6 +141,11 @@ public sealed class EchoStore : IDisposable
 	{
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return new Dictionary<string, DateTime>();
+			}
+
 			return this.connection.Table<VerifiedRow>()
 				.ToDictionary(row => row.Key, row => UtcTimestamp.Parse(row.VerifiedAtUtc));
 		}
@@ -125,6 +161,11 @@ public sealed class EchoStore : IDisposable
 
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return;
+			}
+
 			this.connection.RunInTransaction(() =>
 			{
 				foreach (var chunk in keyList.Chunk(BulkQueryBatchSize))
@@ -145,6 +186,11 @@ public sealed class EchoStore : IDisposable
 
 		lock (this.gate)
 		{
+			if (this.disposed)
+			{
+				return;
+			}
+
 			this.connection.RunInTransaction(() =>
 			{
 				KeyedRowMigration.Migrate<PinRow>(this.connection, oldKey, newKey, row =>
@@ -163,6 +209,7 @@ public sealed class EchoStore : IDisposable
 	{
 		lock (this.gate)
 		{
+			this.disposed = true;
 			this.connection.Dispose();
 		}
 	}
