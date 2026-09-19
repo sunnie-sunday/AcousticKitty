@@ -32,7 +32,6 @@ public sealed class EchoService : IDisposable
 	private static readonly TimeSpan SessionToVerifyDelayMin = TimeSpan.FromSeconds(5);
 	private static readonly TimeSpan SessionToVerifyDelayMax = TimeSpan.FromSeconds(10);
 	private static readonly TimeSpan DefaultRetryAfter = TimeSpan.FromSeconds(10);
-	private static readonly TimeSpan ApiDownRetryDelay = TimeSpan.FromSeconds(30);
 	private static readonly TimeSpan MaxCharacterBackoff = TimeSpan.FromMinutes(30);
 	private static readonly TimeSpan NoEligibleMatchPollInterval = TimeSpan.FromSeconds(1);
 	private static readonly TimeSpan SnapshotRebuildInterval = TimeSpan.FromSeconds(1);
@@ -59,7 +58,6 @@ public sealed class EchoService : IDisposable
 	private volatile string? statusReason;
 	private CancellationTokenSource? processingStopCts;
 
-	private DateTime globalRetryAtUtc = DateTime.MinValue;
 	private DateTime nextRetryUtc;
 	private DateTime lastSnapshotRebuildUtc = DateTime.MinValue;
 	private volatile IReadOnlyList<PendingMatch> pendingSnapshot = Array.Empty<PendingMatch>();
@@ -218,13 +216,6 @@ public sealed class EchoService : IDisposable
 		{
 			while (true)
 			{
-				if (DateTime.UtcNow < this.globalRetryAtUtc)
-				{
-					this.state = EchoQueueState.WaitingToRetry;
-					await Task.Delay(NoEligibleMatchPollInterval, stopCts.Token).ConfigureAwait(false);
-					continue;
-				}
-
 				IReadOnlyList<PendingMatch> candidates;
 				try
 				{
@@ -349,12 +340,11 @@ public sealed class EchoService : IDisposable
 		}
 		catch (EchoRateLimitedException ex)
 		{
-			var delay = ex.RetryAfter ?? DefaultRetryAfter;
 			this.statusReason = "Rate-limited by the Echo API";
+			var delay = this.RecordFailureAndGetBackoff(match.ContentId, DefaultRetryAfter);
 			this.nextRetryUtc = DateTime.UtcNow + delay;
-			this.globalRetryAtUtc = this.nextRetryUtc;
 			this.log.Debug($"Echo API rate-limited verifying {match.CharacterName}: {ex.GetType()}: {ex.Message}");
-			return TimeSpan.Zero;
+			return delay;
 		}
 		catch (EchoException ex)
 		{
@@ -367,7 +357,7 @@ public sealed class EchoService : IDisposable
 		catch (Exception ex)
 		{
 			this.statusReason = "The Echo API is unreachable";
-			var delay = this.RecordFailureAndGetBackoff(match.ContentId, ApiDownRetryDelay);
+			var delay = this.RecordFailureAndGetBackoff(match.ContentId, DefaultRetryAfter);
 			this.nextRetryUtc = DateTime.UtcNow + delay;
 			this.log.Warning($"Echo API unreachable verifying {match.CharacterName}: {ex.GetType()}: {ex.Message}");
 			return delay;
