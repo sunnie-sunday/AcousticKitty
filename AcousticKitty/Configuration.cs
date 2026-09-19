@@ -5,6 +5,7 @@
 
 using System;
 using AcousticKitty.Character;
+using AcousticKitty.Common;
 using AcousticKitty.Echo;
 using Dalamud.Configuration;
 using Newtonsoft.Json;
@@ -31,6 +32,7 @@ public sealed class Configuration : IPluginConfiguration
 
 	public NearbySearchMode NearbySearchMode { get; set; } = NearbySearchMode.Manual;
 	public EchoQueueMode EchoQueueMode { get; set; } = EchoQueueMode.Manual;
+	public DatabaseCacheTier DatabaseCacheTier { get; set; } = DatabaseCacheTier.Medium;
 
 	public void Save()
 	{

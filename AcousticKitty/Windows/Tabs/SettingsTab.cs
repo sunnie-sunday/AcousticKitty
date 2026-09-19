@@ -5,6 +5,7 @@
 
 using System;
 using AcousticKitty.Character;
+using AcousticKitty.Common;
 using AcousticKitty.Echo;
 using AcousticKitty.Windows.Views;
 using Dalamud.Bindings.ImGui;
@@ -14,15 +15,40 @@ namespace AcousticKitty.Windows.Tabs;
 
 internal sealed class SettingsTab(Plugin plugin)
 {
+	private static readonly DatabaseCacheTier[] CacheSizeTiers =
+		[DatabaseCacheTier.Small, DatabaseCacheTier.Medium, DatabaseCacheTier.Large];
+	private static readonly string[] CacheSizeTierNames =
+		["12,500 (Small)", "25,000 (Medium)", "50,000 (Large)"];
+
 	private string proxyHostBuffer = plugin.Configuration.EchoProxyHost;
 	private string proxyPortBuffer = plugin.Configuration.EchoProxyPort.ToString();
 	private string proxyUsernameBuffer = plugin.Configuration.EchoProxyUsername;
 	private string proxyPasswordBuffer = plugin.Configuration.EchoProxyPassword;
 	private string? proxyValidationError;
+	private int cacheSizeTierIndex =
+		Array.IndexOf(CacheSizeTiers, plugin.Configuration.DatabaseCacheTier);
 
 	public void Draw()
 	{
 		var configuration = plugin.Configuration;
+
+		ImGui.TextUnformatted("Cache size");
+		if (ImGui.Combo(
+			"##DatabaseCacheTier", ref this.cacheSizeTierIndex, CacheSizeTierNames,
+			CacheSizeTierNames.Length))
+		{
+			configuration.DatabaseCacheTier = CacheSizeTiers[this.cacheSizeTierIndex];
+			configuration.Save();
+		}
+
+		ImGui.BeginDisabled();
+		ImGui.TextWrapped(
+			"How many characters the Database tabs will cache before evicting the oldest.");
+		ImGui.EndDisabled();
+
+		ImGui.Spacing();
+		ImGui.Separator();
+		ImGui.Spacing();
 
 		ImGui.TextUnformatted("Lodestone queue mode");
 		ImGui.Spacing();

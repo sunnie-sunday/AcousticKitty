@@ -64,6 +64,8 @@ public sealed class EchoService : IDisposable
 	private DateTime lastSnapshotRebuildUtc = DateTime.MinValue;
 	private volatile IReadOnlyList<PendingMatch> pendingSnapshot = Array.Empty<PendingMatch>();
 
+	private long currentlyVerifyingContentId = -1;
+
 	#region Public API
 
 	public EchoService(
@@ -129,13 +131,24 @@ public sealed class EchoService : IDisposable
 		}
 	}
 
+	public ulong? CurrentlyVerifyingContentId
+	{
+		get
+		{
+			var value = Interlocked.Read(ref this.currentlyVerifyingContentId);
+			return value < 0 ? null : unchecked((ulong)value);
+		}
+	}
+
 	public int PendingVerifyCount => this.PendingVerifications.Count;
 
 	public bool IsProcessing => this.isProcessingFlag != 0;
 
 	public void NotifyMatchConfirmed()
 	{
-		DatabaseCapEnforcer.EnforceUnverified(this.characterDirectory, this.lodestoneCache, this.echoStore);
+		DatabaseCapEnforcer.EnforceUnverified(
+			this.characterDirectory, this.lodestoneCache, this.echoStore,
+			this.CurrentlyVerifyingContentId);
 
 		if (this.isProcessingFlag == 0 && this.configuration.EchoQueueMode == EchoQueueMode.Auto)
 		{
@@ -246,7 +259,17 @@ public sealed class EchoService : IDisposable
 
 				this.state = EchoQueueState.Verifying;
 
-				var retryAfter = await this.TrySendAsync(match, stopCts.Token).ConfigureAwait(false);
+				Interlocked.Exchange(ref this.currentlyVerifyingContentId, unchecked((long)match.ContentId));
+				TimeSpan? retryAfter;
+				try
+				{
+					retryAfter = await this.TrySendAsync(match, stopCts.Token).ConfigureAwait(false);
+				}
+				finally
+				{
+					Interlocked.Exchange(ref this.currentlyVerifyingContentId, -1);
+				}
+
 				if (retryAfter is { } delay)
 				{
 					this.nextEligibleAtUtc[match.ContentId] = DateTime.UtcNow + delay;

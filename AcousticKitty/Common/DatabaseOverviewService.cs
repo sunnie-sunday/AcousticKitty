@@ -23,6 +23,8 @@ public sealed class DatabaseOverviewService(
 	IPlayerState playerState,
 	GroupSearchService groupSearchService,
 	FreeCompanyIdIndex freeCompanyIdIndex,
+	Configuration configuration,
+	EchoService echoService,
 	IPluginLog log)
 {
 	private volatile IReadOnlyList<DatabaseEntryViewModel> pinned =
@@ -142,7 +144,9 @@ public sealed class DatabaseOverviewService(
 	private void ReloadVerifiedCore()
 	{
 		var stopwatch = Stopwatch.StartNew();
-		DatabaseCapEnforcer.EnforceVerified(characterDirectory, lodestoneCache, echoStore);
+		DatabaseCapEnforcer.EnforceVerified(
+			characterDirectory, lodestoneCache, echoStore,
+			DatabaseCapEnforcer.ResolveCap(configuration.DatabaseCacheTier));
 		this.verified = this.BuildVerifiedOrUnverifiedList(wantVerified: true);
 		log.Verbose(
 			$"Reloaded Database Verified tab: {this.verified.Count} in {stopwatch.ElapsedMilliseconds} ms.");
@@ -151,7 +155,8 @@ public sealed class DatabaseOverviewService(
 	private void ReloadUnverifiedCore()
 	{
 		var stopwatch = Stopwatch.StartNew();
-		DatabaseCapEnforcer.EnforceUnverified(characterDirectory, lodestoneCache, echoStore);
+		DatabaseCapEnforcer.EnforceUnverified(
+			characterDirectory, lodestoneCache, echoStore, echoService.CurrentlyVerifyingContentId);
 		this.unverified = this.BuildVerifiedOrUnverifiedList(wantVerified: false);
 		log.Verbose(
 			$"Reloaded Database Unverified tab: {this.unverified.Count} in " +
@@ -210,7 +215,8 @@ public sealed class DatabaseOverviewService(
 	private void ReloadHiddenCore()
 	{
 		var stopwatch = Stopwatch.StartNew();
-		DatabaseCapEnforcer.EnforceHidden(characterDirectory);
+		DatabaseCapEnforcer.EnforceHidden(
+			characterDirectory, DatabaseCapEnforcer.ResolveCap(configuration.DatabaseCacheTier));
 
 		var hiddenKnown = characterDirectory.GetHidden();
 		var pinnedKeys = new HashSet<string>(echoStore.GetAllPinned().Select(pin => pin.Key));
@@ -254,7 +260,9 @@ public sealed class DatabaseOverviewService(
 	private void ReloadUnseenCore()
 	{
 		var stopwatch = Stopwatch.StartNew();
-		DatabaseCapEnforcer.EnforceUnseen(characterDirectory, lodestoneCache);
+		DatabaseCapEnforcer.EnforceUnseen(
+			characterDirectory, lodestoneCache,
+			DatabaseCapEnforcer.ResolveCap(configuration.DatabaseCacheTier));
 
 		var seenNameWorldKeys = new HashSet<string>(characterDirectory.GetAllNameWorldKeys());
 		var pinnedKeys = new HashSet<string>(echoStore.GetAllPinned().Select(pin => pin.Key));

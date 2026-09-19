@@ -243,9 +243,11 @@ public sealed partial class NearbyCharactersService : IDisposable
 		}
 
 		this.lastCapEnforcementUtc = now;
-		DatabaseCapEnforcer.EnforceHidden(this.characterDirectory);
-		DatabaseCapEnforcer.EnforceUnseen(this.characterDirectory, this.lodestoneCache);
-		DatabaseCapEnforcer.EnforceVerified(this.characterDirectory, this.lodestoneCache, this.echoStore);
+		var cap = DatabaseCapEnforcer.ResolveCap(this.configuration.DatabaseCacheTier);
+		DatabaseCapEnforcer.EnforceHidden(this.characterDirectory, cap);
+		DatabaseCapEnforcer.EnforceUnseen(this.characterDirectory, this.lodestoneCache, cap);
+		DatabaseCapEnforcer.EnforceVerified(
+			this.characterDirectory, this.lodestoneCache, this.echoStore, cap);
 	}
 
 	private static unsafe PlayerLocalData? SnapshotCharacter(

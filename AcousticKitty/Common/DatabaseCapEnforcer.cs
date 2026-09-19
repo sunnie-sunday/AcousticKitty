@@ -12,12 +12,24 @@ using AcousticKitty.Echo;
 
 namespace AcousticKitty.Common;
 
+public enum DatabaseCacheTier
+{
+	Small,
+	Medium,
+	Large,
+}
+
 internal static class DatabaseCapEnforcer
 {
-	public const int UnverifiedCap = 25_000;
-	public const int HiddenCap = 25_000;
-	public const int UnseenCap = 25_000;
-	public const int VerifiedCap = 25_000;
+	public const int UnverifiedCap = 5_000;
+
+	public static int ResolveCap(DatabaseCacheTier tier) => tier switch
+	{
+		DatabaseCacheTier.Small => 12_500,
+		DatabaseCacheTier.Medium => 25_000,
+		DatabaseCacheTier.Large => 50_000,
+		_ => 25_000,
+	};
 
 	public static IReadOnlyList<KnownCharacter> GetUnverifiedCandidates(
 		CharacterDirectory characterDirectory, EchoStore echoStore)
@@ -30,8 +42,10 @@ internal static class DatabaseCapEnforcer
 	}
 
 	public static void EnforceUnverified(
-		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, EchoStore echoStore)
+		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, EchoStore echoStore,
+		ulong? currentlyVerifyingContentId)
 	{
+		var pinnedKeys = new HashSet<string>(echoStore.GetAllPinned().Select(pin => pin.Key));
 		var candidates = DatabaseCapEnforcer.GetUnverifiedCandidates(characterDirectory, echoStore)
 			.Select(known => (
 				known.Data.ContentId,
@@ -40,7 +54,9 @@ internal static class DatabaseCapEnforcer
 			.ToList();
 
 		OldestFirstEviction.Trim(
-			candidates, UnverifiedCap, _ => true, item => item.LastSeenUtc,
+			candidates, UnverifiedCap,
+			item => !pinnedKeys.Contains(item.CacheKey) && item.ContentId != currentlyVerifyingContentId,
+			item => item.LastSeenUtc,
 			items =>
 			{
 				characterDirectory.DeleteMany(items.Select(item => item.ContentId));
@@ -48,15 +64,16 @@ internal static class DatabaseCapEnforcer
 			});
 	}
 
-	public static void EnforceHidden(CharacterDirectory characterDirectory)
+	public static void EnforceHidden(CharacterDirectory characterDirectory, int cap)
 	{
 		var candidates = characterDirectory.GetHidden().ToList();
 		OldestFirstEviction.Trim(
-			candidates, HiddenCap, _ => true, known => known.LastSeenUtc,
+			candidates, cap, _ => true, known => known.LastSeenUtc,
 			items => characterDirectory.DeleteMany(items.Select(known => known.Data.ContentId)));
 	}
 
-	public static void EnforceUnseen(CharacterDirectory characterDirectory, LodestoneCache lodestoneCache)
+	public static void EnforceUnseen(
+		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, int cap)
 	{
 		var seenNameWorldKeys = new HashSet<string>(characterDirectory.GetAllNameWorldKeys());
 		var resolvedByKey = lodestoneCache.GetAllResolved().ToDictionary(resolved => resolved.Key);
@@ -97,12 +114,13 @@ internal static class DatabaseCapEnforcer
 		}
 
 		OldestFirstEviction.Trim(
-			candidates, UnseenCap, _ => true, item => item.Timestamp,
+			candidates, cap, _ => true, item => item.Timestamp,
 			items => lodestoneCache.DeleteCharacters(items.Select(item => item.Key)));
 	}
 
 	public static void EnforceVerified(
-		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, EchoStore echoStore)
+		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, EchoStore echoStore,
+		int cap)
 	{
 		var verifiedKeys = echoStore.GetAllVerifiedKeys();
 		var pinnedKeys = new HashSet<string>(
@@ -117,7 +135,7 @@ internal static class DatabaseCapEnforcer
 			.ToList();
 
 		OldestFirstEviction.Trim(
-			candidates, VerifiedCap, item => !pinnedKeys.Contains(item.CacheKey), item => item.LastSeenUtc,
+			candidates, cap, item => !pinnedKeys.Contains(item.CacheKey), item => item.LastSeenUtc,
 			items =>
 			{
 				characterDirectory.DeleteMany(items.Select(item => item.ContentId));
