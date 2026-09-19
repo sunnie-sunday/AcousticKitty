@@ -50,7 +50,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 	private DateTime lastScanUtc = DateTime.MinValue;
 	private DateTime lastQueueRebuildUtc = DateTime.MinValue;
 	private DateTime lastCapEnforcementUtc = DateTime.MinValue;
-	private volatile bool isDraining;
+	private int drainingFlag;
 	private volatile bool isProcessingScan;
 	private CancellationTokenSource? drainStopCts;
 
@@ -109,11 +109,11 @@ public sealed partial class NearbyCharactersService : IDisposable
 	public IReadOnlyList<NameHistoryEntry> GetNameHistory(ulong contentId) =>
 		this.characterDirectory.GetNameHistory(contentId);
 
-	public bool IsDraining => this.isDraining;
+	public bool IsDraining => this.drainingFlag != 0;
 
 	public void RunSearchOnce()
 	{
-		if (this.isDraining)
+		if (Interlocked.CompareExchange(ref this.drainingFlag, 1, 0) != 0)
 		{
 			return;
 		}
@@ -301,7 +301,6 @@ public sealed partial class NearbyCharactersService : IDisposable
 			data.Name, data.HomeWorldId, known.LodestoneId);
 	}
 
-
 	private void RebuildQueueSnapshot()
 	{
 		var now = DateTime.UtcNow;
@@ -356,7 +355,6 @@ public sealed partial class NearbyCharactersService : IDisposable
 
 	private async Task DrainQueueAsync()
 	{
-		this.isDraining = true;
 		this.drainStopCts = CancellationTokenSource.CreateLinkedTokenSource(this.disposalCts.Token);
 		try
 		{
@@ -391,9 +389,9 @@ public sealed partial class NearbyCharactersService : IDisposable
 		}
 		finally
 		{
-			this.isDraining = false;
 			this.drainStopCts?.Dispose();
 			this.drainStopCts = null;
+			this.drainingFlag = 0;
 		}
 	}
 
