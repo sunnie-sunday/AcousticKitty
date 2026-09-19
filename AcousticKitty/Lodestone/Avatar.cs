@@ -71,7 +71,7 @@ public sealed class AvatarTextureCache(ILodestoneClient client, ITextureProvider
 			var node = this.usageOrder.AddFirst(url);
 			var task = this.FetchAsync(url, cancellationToken);
 			this.cache[url] = (task, node);
-			this.ForgetIfFailed(url, task);
+			this.HandleCompletion(url, task);
 			this.EvictOldestIfOverCapacity();
 			return task;
 		}
@@ -100,19 +100,26 @@ public sealed class AvatarTextureCache(ILodestoneClient client, ITextureProvider
 		}
 	}
 
-	private void ForgetIfFailed(string url, Task<IDalamudTextureWrap?> task)
+	private void HandleCompletion(string url, Task<IDalamudTextureWrap?> task)
 	{
 		_ = task.ContinueWith(
 			completed =>
 			{
-				if (completed.Status == TaskStatus.RanToCompletion && completed.Result != null)
-				{
-					return;
-				}
-
 				lock (this.gate)
 				{
-					if (this.cache.TryGetValue(url, out var current) && current.Task == task)
+					var stillCurrent = this.cache.TryGetValue(url, out var current) && current.Task == task;
+
+					if (completed.Status == TaskStatus.RanToCompletion && completed.Result != null)
+					{
+						if (!stillCurrent)
+						{
+							completed.Result.Dispose();
+						}
+
+						return;
+					}
+
+					if (stillCurrent)
 					{
 						this.cache.Remove(url);
 						this.usageOrder.Remove(current.Node);
