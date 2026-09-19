@@ -30,8 +30,16 @@ internal static class DpapiProtector
 			return string.Empty;
 		}
 
-		var encrypted = Convert.FromBase64String(ciphertext);
-		var bytes = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser);
-		return Encoding.UTF8.GetString(bytes);
+		try
+		{
+			var encrypted = Convert.FromBase64String(ciphertext);
+			var bytes = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser);
+			return Encoding.UTF8.GetString(bytes);
+		}
+		catch (Exception ex) when (
+			ex is CryptographicException or FormatException or PlatformNotSupportedException)
+		{
+			return string.Empty;
+		}
 	}
 }
