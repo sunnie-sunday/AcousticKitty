@@ -18,6 +18,8 @@ internal static class NearbyMemberRow
 		Dictionary<string, string> lodestoneIdInputs)
 	{
 		var data = member.KnownCharacter.Data;
+		var showsOverride = member.KnownCharacter.LookupState != NearbyLookupState.Found
+			&& member.KnownCharacter.LookupState != NearbyLookupState.AccessRestricted;
 
 		var primaryLine = ProfileView.FormatPrimaryLine(
 			data, member.Profile, data.Name, member.WorldName, member.DataCenterName);
@@ -54,11 +56,12 @@ internal static class NearbyMemberRow
 				member.KnownCharacter.LastSeenUtc,
 				new Lazy<IReadOnlyList<NameHistoryEntry>>(() => nearby.GetNameHistory(data.ContentId)),
 				member.IsVerified,
-				member.ProfileAsOfUtc));
+				member.ProfileAsOfUtc,
+				showsOverride));
 
 		var rowEndY = ImGui.GetCursorPosY();
 
-		if (member.KnownCharacter.LookupState != NearbyLookupState.Found)
+		if (showsOverride)
 		{
 			LodestoneOverride.Draw(
 				lodestoneIdInputs, data.ContentId.ToString(), data.Name, data.FreeCompanyTag,

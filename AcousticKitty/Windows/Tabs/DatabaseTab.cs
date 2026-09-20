@@ -235,6 +235,8 @@ internal sealed class DatabaseTab(Plugin plugin)
 
 		var (rowStartX, rowStartY, availWidth) = RowOverlay.CaptureStart();
 
+		var showsOverride = allowOverride && entry.CharacterData != null;
+
 		MemberRow.Draw(
 			plugin,
 			new CharacterRowData(
@@ -250,11 +252,12 @@ internal sealed class DatabaseTab(Plugin plugin)
 				entry.CharacterDataAsOfUtc,
 				entry.NameHistory,
 				entry.IsVerified,
-				entry.ProfileFetchedAtUtc));
+				entry.ProfileFetchedAtUtc,
+				showsOverride));
 
 		var rowEndY = ImGui.GetCursorPosY();
 
-		if (allowOverride && entry.CharacterData is { } data)
+		if (showsOverride && entry.CharacterData is { } data)
 		{
 			this.DrawOverride(entry, data, rowStartX, rowStartY, availWidth);
 		}

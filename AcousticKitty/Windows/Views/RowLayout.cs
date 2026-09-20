@@ -35,6 +35,39 @@ internal static class RightAlignedButton
 		MathF.Max(0f, availWidth - contentWidth);
 }
 
+internal static class StatusBadge
+{
+	private readonly record struct BadgeStyle(string Label, Vector4 Background);
+
+	public static void DrawOverlay(
+		string id, bool isPinned, bool isVerified, bool isQueued, Vector2 rowStart, float rowWidth)
+	{
+		if (StatusBadge.Resolve(isPinned, isVerified, isQueued) is not { } style)
+		{
+			return;
+		}
+
+		var restore = ImGui.GetCursorScreenPos();
+		var width = RightAlignedButton.MeasureButtonWidth(style.Label);
+		ImGui.SetCursorScreenPos(new Vector2(rowStart.X + rowWidth - width, rowStart.Y));
+
+		using (ImRaii.PushColor(ImGuiCol.Button, style.Background)
+			.Push(ImGuiCol.ButtonHovered, style.Background)
+			.Push(ImGuiCol.ButtonActive, style.Background))
+		{
+			ImGui.Button($"{style.Label}##status{id}");
+		}
+
+		ImGui.SetCursorScreenPos(restore);
+	}
+
+	private static BadgeStyle? Resolve(bool isPinned, bool isVerified, bool isQueued) =>
+		isPinned ? new BadgeStyle("Echo contributor", ImGuiColors.ErrorBackground)
+		: isVerified ? new BadgeStyle("Audit passed", ImGuiColors.SuccessBackground)
+		: isQueued ? new BadgeStyle("Queued", ImGuiColors.InfoBackground)
+		: null;
+}
+
 internal static class RowOverlay
 {
 	public static (float StartX, float StartY, float AvailWidth) CaptureStart() =>

@@ -27,26 +27,34 @@ internal sealed record CharacterRowData(
 	DateTime? CharacterDataAsOfUtc,
 	Lazy<IReadOnlyList<NameHistoryEntry>>? NameHistory = null,
 	bool IsVerified = false,
-	DateTime? ProfileAsOfUtc = null);
+	DateTime? ProfileAsOfUtc = null,
+	bool ShowsOverride = false);
 
 internal static class MemberRow
 {
-	private static readonly Vector4 VerifiedBackground = new(57f / 255f, 70f / 255f, 52f / 255f, 0.4f);
-
 	public static void Draw(Plugin plugin, CharacterRowData row)
 	{
 		var drawList = ImGui.GetWindowDrawList();
 		var rowStart = ImGui.GetCursorScreenPos();
 		var rowWidth = ImGui.GetContentRegionAvail().X;
 
+		var isQueued = row.Profile != null && row.CharacterData != null;
+
 		var background = row.IsPinned ? ImGuiColors.ErrorBackground
-			: row.IsVerified ? MemberRow.VerifiedBackground
+			: row.IsVerified ? ImGuiColors.SuccessBackground
+			: isQueued ? ImGuiColors.InfoBackground
 			: (Vector4?)null;
 
 		if (background != null)
 		{
 			drawList.ChannelsSplit(2);
 			drawList.ChannelsSetCurrent(1);
+		}
+
+		if (!row.ShowsOverride)
+		{
+			StatusBadge.DrawOverlay(
+				row.Id, row.IsPinned, row.IsVerified, isQueued, rowStart, rowWidth);
 		}
 
 		ProfileView.DrawAvatar(plugin, row.AvatarUrl, 64f);
@@ -86,7 +94,7 @@ internal static class MemberRow
 			{
 				ImGui.Spacing();
 				ProfileView.DrawCollapsedBody(
-				row.Profile.Value, row.CharacterData, row.NameHistory, row.ProfileAsOfUtc);
+					row.Profile.Value, row.CharacterData, row.NameHistory, row.ProfileAsOfUtc);
 			}
 		}
 
