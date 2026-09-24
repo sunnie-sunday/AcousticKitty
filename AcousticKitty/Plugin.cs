@@ -69,6 +69,10 @@ public sealed class Plugin : IDalamudPlugin
 		this.echoStore = new EchoStore(PluginInterface.ConfigDirectory.FullName, Log);
 		this.characterDirectory =
 			new CharacterDirectory(PluginInterface.ConfigDirectory.FullName, Log);
+
+		UpdateMigrations.Run(
+			this.Configuration, this.echoStore, this.lodestoneCache, this.characterDirectory, Log);
+
 		this.freeCompanyIdIndex = new FreeCompanyIdIndex(this.characterDirectory, this.lodestoneCache);
 		this.avatarWorldHistoryService = new AvatarWorldHistoryService(
 			this.LodestoneClient, this.characterDirectory, DataManager, Log);

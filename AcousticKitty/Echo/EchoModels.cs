@@ -30,12 +30,14 @@ public sealed record PendingMatch(
 	ulong ContentId, string CharacterName, uint HomeWorldId, ulong LodestoneId);
 
 public sealed record PinnedCharacter(
-	string Key,
+	ulong LodestoneId,
 	string Name,
 	uint HomeWorldId,
 	LodestoneProfile? Profile,
 	DateTime? FetchedAtUtc,
 	DateTime PinnedAtUtc);
+
+public sealed record PinnedProfileSnapshot(LodestoneProfile Profile, DateTime? FetchedAtUtc);
 
 public sealed record EchoRegistration(string UploaderId, string ApiKey, string HmacSecretBase64);
 

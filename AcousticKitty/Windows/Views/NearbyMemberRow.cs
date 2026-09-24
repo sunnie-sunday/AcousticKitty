@@ -19,7 +19,8 @@ internal static class NearbyMemberRow
 	{
 		var data = member.KnownCharacter.Data;
 		var showsOverride = member.KnownCharacter.LookupState != NearbyLookupState.Found
-			&& member.KnownCharacter.LookupState != NearbyLookupState.AccessRestricted;
+			&& member.KnownCharacter.LookupState != NearbyLookupState.AccessRestricted
+			&& !member.IsConflicted;
 
 		var primaryLine = ProfileView.FormatPrimaryLine(
 			data, member.Profile, data.Name, member.WorldName, member.DataCenterName);
@@ -57,7 +58,8 @@ internal static class NearbyMemberRow
 				new Lazy<IReadOnlyList<NameHistoryEntry>>(() => nearby.GetNameHistory(data.ContentId)),
 				member.IsVerified,
 				member.ProfileAsOfUtc,
-				showsOverride));
+				showsOverride,
+				IsConflicted: member.IsConflicted));
 
 		var rowEndY = ImGui.GetCursorPosY();
 

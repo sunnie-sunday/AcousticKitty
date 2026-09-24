@@ -6,7 +6,6 @@
 using System;
 using AcousticKitty.Character;
 using AcousticKitty.Lodestone;
-using AcousticKitty.Echo;
 using Dalamud.Plugin.Services;
 
 namespace AcousticKitty.Common;
@@ -16,7 +15,6 @@ public static class CharacterTransferRecorder
 	public static void Record(
 		CharacterDirectory characterDirectory,
 		LodestoneCache lodestoneCache,
-		EchoStore echoStore,
 		IDataManager dataManager,
 		ulong contentId,
 		string oldName,
@@ -38,7 +36,6 @@ public static class CharacterTransferRecorder
 		var newKey = CharacterKey.Build(newName, newHomeWorldId);
 
 		lodestoneCache.RenameCharacter(oldKey, newKey, newName, newHomeWorldId);
-		echoStore.RenameCharacter(oldKey, newKey, newName, newHomeWorldId);
 
 		characterDirectory.SetLookupResult(
 			contentId, lodestoneId, NearbyLookupState.Pending, null, priorityAtUtc: DateTime.UtcNow);

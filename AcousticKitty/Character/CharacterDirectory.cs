@@ -67,8 +67,43 @@ public sealed partial class CharacterDirectory : IDisposable
 			}
 
 			var row = this.connection.Table<KnownCharacterRow>()
-				.FirstOrDefault(r => r.NameWorldKey == nameWorldKey);
+				.FirstOrDefault(r => r.NameWorldKey == nameWorldKey &&
+					r.LookupState != (int)NearbyLookupState.Transferred);
 			return row == null ? null : ToKnownCharacter(row);
+		}
+	}
+
+	public KnownCharacter? TryGetActiveHolder(string nameWorldKey, ulong exceptContentId)
+	{
+		lock (this.gate)
+		{
+			if (this.disposed)
+			{
+				return null;
+			}
+
+			var except = (long)exceptContentId;
+			var row = this.connection.Table<KnownCharacterRow>()
+				.FirstOrDefault(r => r.NameWorldKey == nameWorldKey && r.ContentId != except &&
+					r.LookupState != (int)NearbyLookupState.Transferred);
+			return row == null ? null : ToKnownCharacter(row);
+		}
+	}
+
+	public void PromoteMatureConflictHolds(DateTime nowUtc)
+	{
+		lock (this.gate)
+		{
+			if (this.disposed)
+			{
+				return;
+			}
+
+			this.connection.Execute(
+				"UPDATE KnownCharacters SET LookupState = ?, PriorityAtUtc = NULL " +
+				"WHERE LookupState = ? AND PriorityAtUtc IS NOT NULL AND PriorityAtUtc <= ?",
+				(int)NearbyLookupState.Pending, (int)NearbyLookupState.ConflictHold,
+				UtcTimestamp.Format(nowUtc));
 		}
 	}
 

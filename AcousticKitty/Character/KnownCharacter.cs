@@ -20,6 +20,8 @@ public enum NearbyLookupState
 	NotFound,
 	AccessRestricted,
 	Error,
+	Transferred,
+	ConflictHold,
 }
 
 public sealed record KnownCharacter(

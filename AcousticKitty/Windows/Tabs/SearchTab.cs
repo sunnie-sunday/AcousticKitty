@@ -211,6 +211,7 @@ internal sealed class SearchTab(Plugin plugin)
 						() => plugin.GroupSearchService.GetNameHistory(known.Data.ContentId))
 					: null,
 				member.IsVerified,
-				member.ProfileFetchedAtUtc));
+				member.ProfileFetchedAtUtc,
+				IsConflicted: member.IsConflicted));
 	}
 }

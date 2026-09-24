@@ -318,7 +318,7 @@ public sealed class EchoService : IDisposable
 
 			if (outcome == EchoSaveOutcome.AlreadyPinned)
 			{
-				this.echoStore.Pin(cacheKey, match.CharacterName, match.HomeWorldId);
+				this.echoStore.Pin(match.LodestoneId, match.CharacterName, match.HomeWorldId);
 
 				await this.avatarWorldHistory.DiscoverWorldHistoryAsync(
 					match.ContentId, this.lodestoneCache.TryGetResolvedAvatarUrlHash(cacheKey),
@@ -330,7 +330,7 @@ public sealed class EchoService : IDisposable
 					verifyTranscript.ToString());
 			}
 
-			this.echoStore.MarkVerified(cacheKey, DateTime.UtcNow);
+			this.echoStore.MarkVerified(match.LodestoneId, DateTime.UtcNow);
 
 			return null;
 		}
@@ -448,7 +448,7 @@ internal sealed class AlreadyPinnedLogWriter
 
 	public void Write(AlreadyPinnedLogDetails details, string registerTranscript, string verifyTranscript)
 	{
-		var fileName = $"{AlreadyPinnedLogWriter.Slugify(details.Name)}-{details.LodestoneId}.md";
+		var fileName = $"{details.LodestoneId}.md";
 		var content = AlreadyPinnedLogWriter.BuildFrontmatter(details) +
 			"```http\n" + registerTranscript + "```\n" +
 			"```http\n" + verifyTranscript + "```\n";
@@ -482,29 +482,6 @@ internal sealed class AlreadyPinnedLogWriter
 		{
 			sb.Append(key).Append(": \"").Append(value).Append("\"\n");
 		}
-	}
-
-	private static string Slugify(string value)
-	{
-		var withoutApostrophes = value.Replace("'", string.Empty).Replace("’", string.Empty);
-
-		var sb = new StringBuilder(withoutApostrophes.Length);
-		var lastWasHyphen = false;
-		foreach (var ch in withoutApostrophes)
-		{
-			if (char.IsLetterOrDigit(ch))
-			{
-				sb.Append(char.ToLowerInvariant(ch));
-				lastWasHyphen = false;
-			}
-			else if (!lastWasHyphen && sb.Length > 0)
-			{
-				sb.Append('-');
-				lastWasHyphen = true;
-			}
-		}
-
-		return sb.ToString().TrimEnd('-');
 	}
 }
 

@@ -6,8 +6,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using AcousticKitty.Common;
 using AcousticKitty.Lodestone;
 using Dalamud.Plugin.Services;
@@ -35,10 +37,11 @@ public sealed class EchoStore : IDisposable
 		this.connection = new SQLiteConnection(databasePath);
 		this.connection.CreateTable<PinRow>();
 		this.connection.CreateTable<VerifiedRow>();
+		this.connection.CreateTable<PinnedProfileRow>();
 		DatabaseVacuum.RunInBackground(this.connection, this.gate, () => this.disposed);
 	}
 
-	public void Pin(string key, string name, uint homeWorldId)
+	public void Pin(ulong lodestoneId, string name, uint homeWorldId)
 	{
 		lock (this.gate)
 		{
@@ -49,14 +52,14 @@ public sealed class EchoStore : IDisposable
 
 			this.connection.InsertOrReplace(new PinRow
 			{
-				Key = key,
+				Key = EchoStore.KeyFor(lodestoneId),
 				Name = name,
 				HomeWorldId = homeWorldId,
 			});
 		}
 	}
 
-	public bool IsPinned(string key)
+	public bool IsPinned(ulong lodestoneId)
 	{
 		lock (this.gate)
 		{
@@ -65,11 +68,11 @@ public sealed class EchoStore : IDisposable
 				return false;
 			}
 
-			return this.connection.Find<PinRow>(key) != null;
+			return this.connection.Find<PinRow>(EchoStore.KeyFor(lodestoneId)) != null;
 		}
 	}
 
-	public bool IsVerified(string key)
+	public bool IsVerified(ulong lodestoneId)
 	{
 		lock (this.gate)
 		{
@@ -78,7 +81,7 @@ public sealed class EchoStore : IDisposable
 				return false;
 			}
 
-			return this.connection.Find<VerifiedRow>(key) != null;
+			return this.connection.Find<VerifiedRow>(EchoStore.KeyFor(lodestoneId)) != null;
 		}
 	}
 
@@ -96,7 +99,7 @@ public sealed class EchoStore : IDisposable
 				.Select(pin => (pin, verified: this.connection.Find<VerifiedRow>(pin.Key)))
 				.Where(row => row.verified != null)
 				.Select(row => new PinnedCharacter(
-					row.pin.Key, row.pin.Name, (uint)row.pin.HomeWorldId, null, null,
+					EchoStore.ParseKey(row.pin.Key), row.pin.Name, (uint)row.pin.HomeWorldId, null, null,
 					UtcTimestamp.Parse(row.verified!.VerifiedAtUtc)))
 				.ToArray();
 
@@ -107,7 +110,7 @@ public sealed class EchoStore : IDisposable
 		}
 	}
 
-	public void MarkVerified(string key, DateTime verifiedAtUtc)
+	public void MarkVerified(ulong lodestoneId, DateTime verifiedAtUtc)
 	{
 		lock (this.gate)
 		{
@@ -118,42 +121,56 @@ public sealed class EchoStore : IDisposable
 
 			this.connection.InsertOrReplace(new VerifiedRow
 			{
-				Key = key,
+				Key = EchoStore.KeyFor(lodestoneId),
 				VerifiedAtUtc = UtcTimestamp.Format(verifiedAtUtc),
 			});
 		}
 	}
 
-	public IReadOnlySet<string> GetAllVerifiedKeys()
+	public IReadOnlySet<ulong> GetAllVerifiedLodestoneIds()
 	{
 		lock (this.gate)
 		{
 			if (this.disposed)
 			{
-				return new HashSet<string>();
-			}
-
-			return this.connection.Table<VerifiedRow>().Select(row => row.Key).ToHashSet();
-		}
-	}
-
-	public IReadOnlyDictionary<string, DateTime> GetAllVerified()
-	{
-		lock (this.gate)
-		{
-			if (this.disposed)
-			{
-				return new Dictionary<string, DateTime>();
+				return new HashSet<ulong>();
 			}
 
 			return this.connection.Table<VerifiedRow>()
-				.ToDictionary(row => row.Key, row => UtcTimestamp.Parse(row.VerifiedAtUtc));
+				.Select(row => row.Key)
+				.ToList()
+				.Select(EchoStore.TryParseKey)
+				.Where(id => id != null)
+				.Select(id => id!.Value)
+				.ToHashSet();
 		}
 	}
 
-	public void DeleteVerified(IEnumerable<string> keys)
+	public IReadOnlyDictionary<ulong, DateTime> GetAllVerified()
 	{
-		var keyList = keys.ToList();
+		lock (this.gate)
+		{
+			if (this.disposed)
+			{
+				return new Dictionary<ulong, DateTime>();
+			}
+
+			var result = new Dictionary<ulong, DateTime>();
+			foreach (var row in this.connection.Table<VerifiedRow>())
+			{
+				if (EchoStore.TryParseKey(row.Key) is { } lodestoneId)
+				{
+					result[lodestoneId] = UtcTimestamp.Parse(row.VerifiedAtUtc);
+				}
+			}
+
+			return result;
+		}
+	}
+
+	public void DeleteVerified(IEnumerable<ulong> lodestoneIds)
+	{
+		var keyList = lodestoneIds.Select(EchoStore.KeyFor).ToList();
 		if (keyList.Count == 0)
 		{
 			return;
@@ -177,13 +194,49 @@ public sealed class EchoStore : IDisposable
 		}
 	}
 
-	public void RenameCharacter(string oldKey, string newKey, string newName, uint newHomeWorldId)
+	public void SavePinnedProfileSnapshot(
+		ulong lodestoneId, LodestoneProfile profile, DateTime? fetchedAtUtc)
 	{
-		if (oldKey == newKey)
+		lock (this.gate)
 		{
-			return;
-		}
+			if (this.disposed)
+			{
+				return;
+			}
 
+			this.connection.InsertOrReplace(new PinnedProfileRow
+			{
+				Key = EchoStore.KeyFor(lodestoneId),
+				ProfileJson = JsonSerializer.Serialize(profile),
+				FetchedAtUtc = fetchedAtUtc.HasValue ? UtcTimestamp.Format(fetchedAtUtc.Value) : null,
+			});
+		}
+	}
+
+	public PinnedProfileSnapshot? TryGetPinnedProfileSnapshot(ulong lodestoneId)
+	{
+		lock (this.gate)
+		{
+			if (this.disposed)
+			{
+				return null;
+			}
+
+			var row = this.connection.Find<PinnedProfileRow>(EchoStore.KeyFor(lodestoneId));
+			if (row == null || JsonSerializer.Deserialize<LodestoneProfile>(row.ProfileJson) is not { } profile)
+			{
+				return null;
+			}
+
+			var fetchedAtUtc = string.IsNullOrEmpty(row.FetchedAtUtc)
+				? (DateTime?)null
+				: UtcTimestamp.Parse(row.FetchedAtUtc);
+			return new PinnedProfileSnapshot(profile, fetchedAtUtc);
+		}
+	}
+
+	public void MigrateKeysToLodestoneId(Func<string, ulong?> resolveLodestoneId)
+	{
 		lock (this.gate)
 		{
 			if (this.disposed)
@@ -193,14 +246,8 @@ public sealed class EchoStore : IDisposable
 
 			this.connection.RunInTransaction(() =>
 			{
-				KeyedRowMigration.Migrate<PinRow>(this.connection, oldKey, newKey, row =>
-				{
-					row.Key = newKey;
-					row.Name = newName;
-					row.HomeWorldId = newHomeWorldId;
-				});
-				KeyedRowMigration.Migrate<VerifiedRow>(
-					this.connection, oldKey, newKey, row => row.Key = newKey);
+				this.MigrateVerifiedRows(resolveLodestoneId);
+				this.MigratePinRows(resolveLodestoneId);
 			});
 		}
 	}
@@ -213,6 +260,94 @@ public sealed class EchoStore : IDisposable
 			this.connection.Dispose();
 		}
 	}
+
+	#endregion
+
+	#region Migration
+
+	private void MigrateVerifiedRows(Func<string, ulong?> resolveLodestoneId)
+	{
+		var newestByKey = new Dictionary<string, VerifiedRow>();
+		var staleKeys = new List<string>();
+
+		foreach (var row in this.connection.Table<VerifiedRow>().ToList())
+		{
+			if (!row.Key.Contains('@'))
+			{
+				continue;
+			}
+
+			staleKeys.Add(row.Key);
+			if (resolveLodestoneId(row.Key) is not { } lodestoneId)
+			{
+				this.log.Warning($"Echo migration: dropping unresolvable verified key '{row.Key}'.");
+				continue;
+			}
+
+			var newKey = EchoStore.KeyFor(lodestoneId);
+			if (!newestByKey.TryGetValue(newKey, out var existing) ||
+				string.CompareOrdinal(row.VerifiedAtUtc, existing.VerifiedAtUtc) > 0)
+			{
+				newestByKey[newKey] = new VerifiedRow { Key = newKey, VerifiedAtUtc = row.VerifiedAtUtc };
+			}
+		}
+
+		foreach (var key in staleKeys)
+		{
+			this.connection.Delete<VerifiedRow>(key);
+		}
+
+		foreach (var row in newestByKey.Values)
+		{
+			this.connection.InsertOrReplace(row);
+		}
+	}
+
+	private void MigratePinRows(Func<string, ulong?> resolveLodestoneId)
+	{
+		var migratedByKey = new Dictionary<string, PinRow>();
+		var staleKeys = new List<string>();
+
+		foreach (var row in this.connection.Table<PinRow>().ToList())
+		{
+			if (!row.Key.Contains('@'))
+			{
+				continue;
+			}
+
+			if (resolveLodestoneId(row.Key) is not { } lodestoneId)
+			{
+				this.log.Warning(
+					$"Echo migration: keeping unresolvable pinned key '{row.Key}' unchanged.");
+				continue;
+			}
+
+			staleKeys.Add(row.Key);
+			var newKey = EchoStore.KeyFor(lodestoneId);
+			migratedByKey[newKey] =
+				new PinRow { Key = newKey, Name = row.Name, HomeWorldId = row.HomeWorldId };
+		}
+
+		foreach (var key in staleKeys)
+		{
+			this.connection.Delete<PinRow>(key);
+		}
+
+		foreach (var row in migratedByKey.Values)
+		{
+			this.connection.InsertOrReplace(row);
+		}
+	}
+
+	private static string KeyFor(ulong lodestoneId) =>
+		lodestoneId.ToString(CultureInfo.InvariantCulture);
+
+	private static ulong ParseKey(string key) => EchoStore.TryParseKey(key) ?? 0UL;
+
+	private static ulong? TryParseKey(string key) =>
+		ulong.TryParse(key, NumberStyles.None, CultureInfo.InvariantCulture, out var lodestoneId)
+			? lodestoneId
+			: null;
 
 	#endregion
 
@@ -236,6 +371,17 @@ public sealed class EchoStore : IDisposable
 		public string Key { get; set; } = string.Empty;
 
 		public string VerifiedAtUtc { get; set; } = string.Empty;
+	}
+
+	[Table("PinnedProfiles")]
+	private sealed class PinnedProfileRow
+	{
+		[PrimaryKey]
+		public string Key { get; set; } = string.Empty;
+
+		public string ProfileJson { get; set; } = string.Empty;
+
+		public string? FetchedAtUtc { get; set; }
 	}
 
 	#endregion

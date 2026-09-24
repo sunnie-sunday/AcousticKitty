@@ -37,6 +37,8 @@ public sealed class GroupMemberViewModel(MemberListEntry entry)
 
 	public bool IsVerified { get; internal set; }
 
+	public bool IsConflicted { get; internal set; }
+
 	public MemberProfileState ProfileState { get; internal set; } = MemberProfileState.NotPinned;
 
 	public LodestoneProfile? Profile { get; internal set; }

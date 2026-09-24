@@ -26,6 +26,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 	private static readonly TimeSpan QueueRebuildInterval = TimeSpan.FromSeconds(1);
 
 	private static readonly TimeSpan CapEnforcementInterval = TimeSpan.FromSeconds(60);
+	private static readonly TimeSpan ReuseHoldDuration = TimeSpan.FromHours(72);
 
 	private static readonly TimeSpan NoWorkPollInterval = TimeSpan.FromSeconds(1);
 
@@ -215,6 +216,13 @@ public sealed partial class NearbyCharactersService : IDisposable
 		}).ToArray();
 		this.characterDirectory.UpsertSnapshots(rows);
 
+		foreach (var data in snapshots)
+		{
+			this.HandleNameReuseIfDetected(data, scanUtc);
+		}
+
+		this.characterDirectory.PromoteMatureConflictHolds(scanUtc);
+
 		var liveList = new List<NearbyMemberViewModel>(snapshots.Count);
 		foreach (var data in snapshots)
 		{
@@ -296,9 +304,52 @@ public sealed partial class NearbyCharactersService : IDisposable
 		}
 
 		CharacterTransferRecorder.Record(
-			this.characterDirectory, this.lodestoneCache, this.echoStore, this.dataManager,
+			this.characterDirectory, this.lodestoneCache, this.dataManager,
 			data.ContentId, known.Data.Name, known.Data.HomeWorldId, known.LastSeenUtc,
 			data.Name, data.HomeWorldId, known.LodestoneId);
+	}
+
+	private void HandleNameReuseIfDetected(PlayerLocalData data, DateTime nowUtc)
+	{
+		var nameWorldKey = CharacterDirectory.BuildNameWorldKey(data.Name, data.HomeWorldId);
+		var priorHolder = this.characterDirectory.TryGetActiveHolder(nameWorldKey, data.ContentId);
+		if (priorHolder == null)
+		{
+			return;
+		}
+
+		var priorIsPinned =
+			priorHolder.LodestoneId is { } priorId && this.echoStore.IsPinned(priorId);
+		if (priorIsPinned)
+		{
+			var (profile, fetchedAtUtc) = this.lodestoneCache.ResolveProfileOrPartial(nameWorldKey);
+			if (profile != null)
+			{
+				this.echoStore.SavePinnedProfileSnapshot(
+					priorHolder.LodestoneId!.Value, profile, fetchedAtUtc);
+			}
+
+			this.characterDirectory.SetLookupResult(
+				priorHolder.Data.ContentId, priorHolder.LodestoneId, NearbyLookupState.Transferred, null);
+		}
+		else
+		{
+			this.characterDirectory.DeleteMany(new[] { priorHolder.Data.ContentId });
+			if (priorHolder.LodestoneId is { } verifiedId)
+			{
+				this.echoStore.DeleteVerified(new[] { verifiedId });
+			}
+		}
+
+		if (this.characterDirectory.TryGetByContentId(data.ContentId)?.LodestoneId != null)
+		{
+			return;
+		}
+
+		this.lodestoneCache.DeleteCharacters(new[] { nameWorldKey });
+		this.characterDirectory.SetLookupResult(
+			data.ContentId, null, NearbyLookupState.ConflictHold, null,
+			priorityAtUtc: nowUtc + ReuseHoldDuration);
 	}
 
 	private void RebuildQueueSnapshot()
@@ -329,8 +380,9 @@ public sealed partial class NearbyCharactersService : IDisposable
 	private NearbyMemberViewModel BuildViewModel(KnownCharacter known)
 	{
 		var cacheKey = CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId);
-		var isPinned = this.echoStore.IsPinned(cacheKey);
-		var isVerified = this.echoStore.IsVerified(cacheKey);
+		var isPinned = known.LodestoneId is { } lodestoneId && this.echoStore.IsPinned(lodestoneId);
+		var isVerified =
+			known.LodestoneId is { } verifiedId && this.echoStore.IsVerified(verifiedId);
 
 		LodestoneProfile? profile = null;
 		DateTime? profileAsOfUtc = null;
@@ -350,7 +402,8 @@ public sealed partial class NearbyCharactersService : IDisposable
 		var isSearching = known.Data.ContentId == this.activeContentIdOrZero;
 		return new NearbyMemberViewModel(
 			known, isPinned, profile, avatarUrlHash, isSearching, worldName, dataCenterName,
-			jobAbbreviation, isVerified, profileAsOfUtc);
+			jobAbbreviation, isVerified, profileAsOfUtc,
+			known.LookupState == NearbyLookupState.ConflictHold);
 	}
 
 	private async Task DrainQueueAsync()
@@ -440,6 +493,15 @@ public sealed partial class NearbyCharactersService : IDisposable
 				}
 
 				lodestoneId = searchEntry.CharacterId;
+			}
+
+			if (this.characterDirectory.TryGetByLodestoneId(lodestoneId.Value) is { } owner &&
+				owner.Data.ContentId != contentId)
+			{
+				this.characterDirectory.SetLookupResult(
+					contentId, null, NearbyLookupState.ConflictHold, null,
+					priorityAtUtc: DateTime.UtcNow + ReuseHoldDuration);
+				return;
 			}
 
 			this.lodestoneCache.SaveResolvedId(

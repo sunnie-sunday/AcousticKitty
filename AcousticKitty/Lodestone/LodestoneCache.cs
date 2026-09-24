@@ -347,7 +347,7 @@ public sealed partial class LodestoneCache : IDisposable
 	public IReadOnlyList<CachedProfileEntry> GetCachedProfilesForKeys(IEnumerable<string> keys)
 	{
 		var result = new List<CachedProfileEntry>();
-		foreach (var chunk in keys.ToList().Chunk(BulkQueryBatchSize))
+		foreach (var chunk in keys.Distinct().ToList().Chunk(BulkQueryBatchSize))
 		{
 			var chunkKeys = chunk.ToList();
 			lock (this.gate)
@@ -374,7 +374,7 @@ public sealed partial class LodestoneCache : IDisposable
 	public IReadOnlyList<ResolvedCharacterEntry> GetResolvedForKeys(IEnumerable<string> keys)
 	{
 		var result = new List<ResolvedCharacterEntry>();
-		foreach (var chunk in keys.ToList().Chunk(BulkQueryBatchSize))
+		foreach (var chunk in keys.Distinct().ToList().Chunk(BulkQueryBatchSize))
 		{
 			var chunkKeys = chunk.ToList();
 			lock (this.gate)

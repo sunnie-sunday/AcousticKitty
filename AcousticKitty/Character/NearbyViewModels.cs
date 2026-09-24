@@ -18,13 +18,16 @@ public sealed class NearbyMemberViewModel(
 	string dataCenterName,
 	string jobAbbreviation,
 	bool isVerified = false,
-	DateTime? profileAsOfUtc = null)
+	DateTime? profileAsOfUtc = null,
+	bool isConflicted = false)
 {
 	public KnownCharacter KnownCharacter { get; } = knownCharacter;
 
 	public bool IsPinned { get; internal set; } = isPinned;
 
 	public bool IsVerified { get; internal set; } = isVerified;
+
+	public bool IsConflicted { get; internal set; } = isConflicted;
 
 	public LodestoneProfile? Profile { get; internal set; } = profile;
 

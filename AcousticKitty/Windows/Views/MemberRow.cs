@@ -28,7 +28,8 @@ internal sealed record CharacterRowData(
 	Lazy<IReadOnlyList<NameHistoryEntry>>? NameHistory = null,
 	bool IsVerified = false,
 	DateTime? ProfileAsOfUtc = null,
-	bool ShowsOverride = false);
+	bool ShowsOverride = false,
+	bool IsConflicted = false);
 
 internal static class MemberRow
 {
@@ -40,7 +41,8 @@ internal static class MemberRow
 
 		var isQueued = row.Profile != null && row.CharacterData != null;
 
-		var background = row.IsPinned ? ImGuiColors.ErrorBackground
+		var background = row.IsConflicted ? ImGuiColors.InfoBackground
+			: row.IsPinned ? ImGuiColors.ErrorBackground
 			: row.IsVerified ? ImGuiColors.SuccessBackground
 			: isQueued ? ImGuiColors.InfoBackground
 			: (Vector4?)null;
@@ -54,7 +56,7 @@ internal static class MemberRow
 		if (!row.ShowsOverride)
 		{
 			StatusBadge.DrawOverlay(
-				row.Id, row.IsPinned, row.IsVerified, isQueued, rowStart, rowWidth);
+				row.Id, row.IsConflicted, row.IsPinned, row.IsVerified, isQueued, rowStart, rowWidth);
 		}
 
 		ProfileView.DrawAvatar(plugin, row.AvatarUrl, 64f);

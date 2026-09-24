@@ -312,7 +312,7 @@ public sealed class GroupSearchService(
 					matchedByLodestoneId.Data.HomeWorldId != entry.HomeWorldId)
 				{
 					CharacterTransferRecorder.Record(
-						characterDirectory, lodestoneCache, echoStore, dataManager,
+						characterDirectory, lodestoneCache, dataManager,
 						matchedByLodestoneId.Data.ContentId, matchedByLodestoneId.Data.Name,
 						matchedByLodestoneId.Data.HomeWorldId, matchedByLodestoneId.LastSeenUtc,
 						entry.Name, entry.HomeWorldId, matchedByLodestoneId.LodestoneId);
@@ -348,8 +348,10 @@ public sealed class GroupSearchService(
 				viewModel.KnownCharacter = characterDirectory.TryGetByContentId(unresolved.Data.ContentId);
 			}
 
-			viewModel.IsVerified = echoStore.IsVerified(cacheKey);
-			viewModel.IsPinned = echoStore.IsPinned(cacheKey);
+			viewModel.IsVerified = echoStore.IsVerified(entry.CharacterId);
+			viewModel.IsPinned = echoStore.IsPinned(entry.CharacterId);
+			viewModel.IsConflicted =
+				viewModel.KnownCharacter?.LookupState == NearbyLookupState.ConflictHold;
 
 			if (viewModel.KnownCharacter is { LookupState: NearbyLookupState.AccessRestricted })
 			{

@@ -34,10 +34,9 @@ internal static class DatabaseCapEnforcer
 	public static IReadOnlyList<KnownCharacter> GetUnverifiedCandidates(
 		CharacterDirectory characterDirectory, EchoStore echoStore)
 	{
-		var verifiedKeys = echoStore.GetAllVerifiedKeys();
+		var verifiedIds = echoStore.GetAllVerifiedLodestoneIds();
 		return characterDirectory.GetFoundOrAccessRestricted()
-			.Where(known => known.LodestoneId != null &&
-				!verifiedKeys.Contains(CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId)))
+			.Where(known => known.LodestoneId != null && !verifiedIds.Contains(known.LodestoneId.Value))
 			.ToArray();
 	}
 
@@ -45,17 +44,19 @@ internal static class DatabaseCapEnforcer
 		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, EchoStore echoStore,
 		ulong? currentlyVerifyingContentId)
 	{
-		var pinnedKeys = new HashSet<string>(echoStore.GetAllPinned().Select(pin => pin.Key));
+		var pinnedIds = new HashSet<ulong>(echoStore.GetAllPinned().Select(pin => pin.LodestoneId));
 		var candidates = DatabaseCapEnforcer.GetUnverifiedCandidates(characterDirectory, echoStore)
 			.Select(known => (
 				known.Data.ContentId,
+				LodestoneId: known.LodestoneId!.Value,
 				CacheKey: CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId),
 				known.LastSeenUtc))
 			.ToList();
 
 		OldestFirstEviction.Trim(
 			candidates, UnverifiedCap,
-			item => !pinnedKeys.Contains(item.CacheKey) && item.ContentId != currentlyVerifyingContentId,
+			item => !pinnedIds.Contains(item.LodestoneId) &&
+				item.ContentId != currentlyVerifyingContentId,
 			item => item.LastSeenUtc,
 			items =>
 			{
@@ -122,25 +123,25 @@ internal static class DatabaseCapEnforcer
 		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, EchoStore echoStore,
 		int cap)
 	{
-		var verifiedKeys = echoStore.GetAllVerifiedKeys();
-		var pinnedKeys = new HashSet<string>(
-			echoStore.GetAllPinned().Select(pin => pin.Key));
+		var verifiedIds = echoStore.GetAllVerifiedLodestoneIds();
+		var pinnedIds = new HashSet<ulong>(echoStore.GetAllPinned().Select(pin => pin.LodestoneId));
 
 		var candidates = characterDirectory.GetFoundOrAccessRestricted()
+			.Where(known => known.LodestoneId != null && verifiedIds.Contains(known.LodestoneId.Value))
 			.Select(known => (
 				known.Data.ContentId,
+				LodestoneId: known.LodestoneId!.Value,
 				CacheKey: CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId),
 				known.LastSeenUtc))
-			.Where(item => verifiedKeys.Contains(item.CacheKey))
 			.ToList();
 
 		OldestFirstEviction.Trim(
-			candidates, cap, item => !pinnedKeys.Contains(item.CacheKey), item => item.LastSeenUtc,
+			candidates, cap, item => !pinnedIds.Contains(item.LodestoneId), item => item.LastSeenUtc,
 			items =>
 			{
 				characterDirectory.DeleteMany(items.Select(item => item.ContentId));
 				lodestoneCache.DeleteCharacters(items.Select(item => item.CacheKey));
-				echoStore.DeleteVerified(items.Select(item => item.CacheKey));
+				echoStore.DeleteVerified(items.Select(item => item.LodestoneId));
 			});
 	}
 }
