@@ -318,7 +318,8 @@ public sealed class EchoService : IDisposable
 
 			if (outcome == EchoSaveOutcome.AlreadyPinned)
 			{
-				this.echoStore.Pin(match.LodestoneId, match.CharacterName, match.HomeWorldId);
+				this.echoStore.PinAndMarkVerified(
+					match.LodestoneId, match.CharacterName, match.HomeWorldId, DateTime.UtcNow);
 
 				await this.avatarWorldHistory.DiscoverWorldHistoryAsync(
 					match.ContentId, this.lodestoneCache.TryGetResolvedAvatarUrlHash(cacheKey),
@@ -329,8 +330,10 @@ public sealed class EchoService : IDisposable
 					registerTranscript.ToString(),
 					verifyTranscript.ToString());
 			}
-
-			this.echoStore.MarkVerified(match.LodestoneId, DateTime.UtcNow);
+			else
+			{
+				this.echoStore.MarkVerified(match.LodestoneId, DateTime.UtcNow);
+			}
 
 			return null;
 		}

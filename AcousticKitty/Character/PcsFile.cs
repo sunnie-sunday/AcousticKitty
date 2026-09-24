@@ -169,7 +169,7 @@ public sealed partial class NearbyCharactersService
 		var rows = imported.Select(item =>
 		{
 			this.RecordRenameIfChanged(item.Data);
-			var nameWorldKey = CharacterDirectory.BuildNameWorldKey(item.Data.Name, item.Data.HomeWorldId);
+			var nameWorldKey = CharacterKey.Build(item.Data.Name, item.Data.HomeWorldId);
 			return (item.Data.ContentId, nameWorldKey, item.Data, item.TimeSeenUtc);
 		}).ToArray();
 

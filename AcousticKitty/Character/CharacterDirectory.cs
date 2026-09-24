@@ -28,9 +28,6 @@ public sealed partial class CharacterDirectory : IDisposable
 
 	#region Public API
 
-	public static string BuildNameWorldKey(string name, uint homeWorldId) =>
-		CharacterKey.Build(name, homeWorldId);
-
 	public CharacterDirectory(string pluginConfigDirectory, IPluginLog log)
 	{
 		this.log = log;
@@ -43,94 +40,58 @@ public sealed partial class CharacterDirectory : IDisposable
 		DatabaseVacuum.RunInBackground(this.connection, this.gate, () => this.disposed);
 	}
 
-	public KnownCharacter? TryGetByContentId(ulong contentId)
-	{
-		lock (this.gate)
-		{
-			if (this.disposed)
+	public KnownCharacter? TryGetByContentId(ulong contentId) =>
+		this.Read<KnownCharacter?>(
+			() =>
 			{
-				return null;
-			}
+				var row = this.connection.Find<KnownCharacterRow>((long)contentId);
+				return row == null ? null : ToKnownCharacter(row);
+			},
+			null);
 
-			var row = this.connection.Find<KnownCharacterRow>((long)contentId);
-			return row == null ? null : ToKnownCharacter(row);
-		}
-	}
-
-	public KnownCharacter? TryGetByNameWorldKey(string nameWorldKey)
-	{
-		lock (this.gate)
-		{
-			if (this.disposed)
+	public KnownCharacter? TryGetByNameWorldKey(string nameWorldKey) =>
+		this.Read<KnownCharacter?>(
+			() =>
 			{
-				return null;
-			}
+				var row = this.connection.Table<KnownCharacterRow>()
+					.FirstOrDefault(r => r.NameWorldKey == nameWorldKey &&
+						r.LookupState != (int)NearbyLookupState.Transferred);
+				return row == null ? null : ToKnownCharacter(row);
+			},
+			null);
 
-			var row = this.connection.Table<KnownCharacterRow>()
-				.FirstOrDefault(r => r.NameWorldKey == nameWorldKey &&
-					r.LookupState != (int)NearbyLookupState.Transferred);
-			return row == null ? null : ToKnownCharacter(row);
-		}
-	}
-
-	public KnownCharacter? TryGetActiveHolder(string nameWorldKey, ulong exceptContentId)
-	{
-		lock (this.gate)
-		{
-			if (this.disposed)
+	public KnownCharacter? TryGetActiveHolder(string nameWorldKey, ulong exceptContentId) =>
+		this.Read<KnownCharacter?>(
+			() =>
 			{
-				return null;
-			}
+				var except = (long)exceptContentId;
+				var row = this.connection.Table<KnownCharacterRow>()
+					.FirstOrDefault(r => r.NameWorldKey == nameWorldKey && r.ContentId != except &&
+						r.LookupState != (int)NearbyLookupState.Transferred);
+				return row == null ? null : ToKnownCharacter(row);
+			},
+			null);
 
-			var except = (long)exceptContentId;
-			var row = this.connection.Table<KnownCharacterRow>()
-				.FirstOrDefault(r => r.NameWorldKey == nameWorldKey && r.ContentId != except &&
-					r.LookupState != (int)NearbyLookupState.Transferred);
-			return row == null ? null : ToKnownCharacter(row);
-		}
-	}
+	public void PromoteMatureConflictHolds(DateTime nowUtc) =>
+		this.Write(() => this.connection.Execute(
+			"UPDATE KnownCharacters SET LookupState = ?, PriorityAtUtc = NULL " +
+			"WHERE LookupState = ? AND PriorityAtUtc IS NOT NULL AND PriorityAtUtc <= ?",
+			(int)NearbyLookupState.Pending, (int)NearbyLookupState.ConflictHold,
+			UtcTimestamp.Format(nowUtc)));
 
-	public void PromoteMatureConflictHolds(DateTime nowUtc)
-	{
-		lock (this.gate)
-		{
-			if (this.disposed)
+	public KnownCharacter? TryGetByLodestoneId(ulong lodestoneId) =>
+		this.Read<KnownCharacter?>(
+			() =>
 			{
-				return;
-			}
+				var row = this.connection.Table<KnownCharacterRow>()
+					.FirstOrDefault(r => r.LodestoneId == (long)lodestoneId);
+				return row == null ? null : ToKnownCharacter(row);
+			},
+			null);
 
-			this.connection.Execute(
-				"UPDATE KnownCharacters SET LookupState = ?, PriorityAtUtc = NULL " +
-				"WHERE LookupState = ? AND PriorityAtUtc IS NOT NULL AND PriorityAtUtc <= ?",
-				(int)NearbyLookupState.Pending, (int)NearbyLookupState.ConflictHold,
-				UtcTimestamp.Format(nowUtc));
-		}
-	}
-
-	public KnownCharacter? TryGetByLodestoneId(ulong lodestoneId)
-	{
-		lock (this.gate)
+	public void UpdateNameWorld(ulong contentId, string newName, uint newHomeWorldId) =>
+		this.Write(() =>
 		{
-			if (this.disposed)
-			{
-				return null;
-			}
-
-			var row = this.connection.Table<KnownCharacterRow>()
-				.FirstOrDefault(r => r.LodestoneId == (long)lodestoneId);
-			return row == null ? null : ToKnownCharacter(row);
-		}
-	}
-
-	public void UpdateNameWorld(ulong contentId, string newName, uint newHomeWorldId)
-	{
-		lock (this.gate)
-		{
-			if (this.disposed)
-			{
-				return;
-			}
-
 			var row = this.connection.Find<KnownCharacterRow>((long)contentId);
 			if (row == null)
 			{
@@ -139,10 +100,9 @@ public sealed partial class CharacterDirectory : IDisposable
 
 			row.Name = newName;
 			row.HomeWorldId = newHomeWorldId;
-			row.NameWorldKey = CharacterDirectory.BuildNameWorldKey(newName, newHomeWorldId);
+			row.NameWorldKey = CharacterKey.Build(newName, newHomeWorldId);
 			this.connection.Update(row);
-		}
-	}
+		});
 
 	public void UpsertSnapshots(
 		IReadOnlyList<(ulong ContentId, string NameWorldKey, PlayerLocalData Data, DateTime LastSeenUtc)> snapshots)
@@ -152,35 +112,21 @@ public sealed partial class CharacterDirectory : IDisposable
 			return;
 		}
 
-		lock (this.gate)
+		this.Write(() => this.connection.RunInTransaction(() =>
 		{
-			if (this.disposed)
+			foreach (var snapshot in snapshots)
 			{
-				return;
+				this.UpsertSnapshotRow(
+					snapshot.ContentId, snapshot.NameWorldKey, snapshot.Data, snapshot.LastSeenUtc);
 			}
-
-			this.connection.RunInTransaction(() =>
-			{
-				foreach (var snapshot in snapshots)
-				{
-					this.UpsertSnapshotRow(
-						snapshot.ContentId, snapshot.NameWorldKey, snapshot.Data, snapshot.LastSeenUtc);
-				}
-			});
-		}
+		}));
 	}
 
 	public void SetLookupResult(
 		ulong contentId, ulong? lodestoneId, NearbyLookupState state, string? errorMessage,
-		bool clearOverride = true, DateTime? priorityAtUtc = null)
-	{
-		lock (this.gate)
+		bool clearOverride = true, DateTime? priorityAtUtc = null) =>
+		this.Write(() =>
 		{
-			if (this.disposed)
-			{
-				return;
-			}
-
 			var row = this.connection.Find<KnownCharacterRow>((long)contentId);
 			if (row == null)
 			{
@@ -207,18 +153,11 @@ public sealed partial class CharacterDirectory : IDisposable
 			}
 
 			this.connection.Update(row);
-		}
-	}
+		});
 
-	public void QueueOverride(ulong contentId, ulong lodestoneId, DateTime priorityAtUtc)
-	{
-		lock (this.gate)
+	public void QueueOverride(ulong contentId, ulong lodestoneId, DateTime priorityAtUtc) =>
+		this.Write(() =>
 		{
-			if (this.disposed)
-			{
-				return;
-			}
-
 			var row = this.connection.Find<KnownCharacterRow>((long)contentId);
 			if (row == null)
 			{
@@ -230,112 +169,74 @@ public sealed partial class CharacterDirectory : IDisposable
 			row.PriorityAtUtc = UtcTimestamp.Format(priorityAtUtc);
 			row.OverrideLodestoneId = (long)lodestoneId;
 			this.connection.Update(row);
-		}
-	}
+		});
 
 	public IReadOnlyList<KnownCharacter> GetPending() => this.GetPending(int.MaxValue);
 
-	public IReadOnlyList<KnownCharacter> GetPending(int limit)
-	{
-		lock (this.gate)
-		{
-			if (this.disposed)
+	public IReadOnlyList<KnownCharacter> GetPending(int limit) =>
+		this.Read<IReadOnlyList<KnownCharacter>>(
+			() =>
 			{
-				return Array.Empty<KnownCharacter>();
-			}
+				var prioritized = this.connection.Table<KnownCharacterRow>()
+					.Where(row =>
+						row.LookupState == (int)NearbyLookupState.Pending && row.PriorityAtUtc != null)
+					.OrderBy(row => row.PriorityAtUtc)
+					.Take(limit)
+					.Select(ToKnownCharacter)
+					.ToArray();
 
-			var prioritized = this.connection.Table<KnownCharacterRow>()
-				.Where(row =>
-					row.LookupState == (int)NearbyLookupState.Pending && row.PriorityAtUtc != null)
-				.OrderBy(row => row.PriorityAtUtc)
-				.Take(limit)
-				.Select(ToKnownCharacter)
-				.ToArray();
+				var remainingLimit = limit - prioritized.Length;
+				if (remainingLimit <= 0)
+				{
+					return prioritized;
+				}
 
-			var remainingLimit = limit - prioritized.Length;
-			if (remainingLimit <= 0)
-			{
-				return prioritized;
-			}
+				var remainder = this.connection.Table<KnownCharacterRow>()
+					.Where(row =>
+						row.LookupState == (int)NearbyLookupState.Pending && row.PriorityAtUtc == null)
+					.OrderBy(row => row.LastSeenUtc)
+					.Take(remainingLimit)
+					.Select(ToKnownCharacter)
+					.ToArray();
 
-			var remainder = this.connection.Table<KnownCharacterRow>()
-				.Where(row =>
-					row.LookupState == (int)NearbyLookupState.Pending && row.PriorityAtUtc == null)
-				.OrderBy(row => row.LastSeenUtc)
-				.Take(remainingLimit)
-				.Select(ToKnownCharacter)
-				.ToArray();
+				return prioritized.Concat(remainder).ToArray();
+			},
+			Array.Empty<KnownCharacter>());
 
-			return prioritized.Concat(remainder).ToArray();
-		}
-	}
-
-	public IReadOnlyList<KnownCharacter> GetFoundOrAccessRestricted()
-	{
-		lock (this.gate)
-		{
-			if (this.disposed)
-			{
-				return Array.Empty<KnownCharacter>();
-			}
-
-			return this.connection.Table<KnownCharacterRow>()
+	public IReadOnlyList<KnownCharacter> GetFoundOrAccessRestricted() =>
+		this.Read<IReadOnlyList<KnownCharacter>>(
+			() => this.connection.Table<KnownCharacterRow>()
 				.Where(row =>
 					row.LookupState == (int)NearbyLookupState.Found ||
 					row.LookupState == (int)NearbyLookupState.AccessRestricted)
 				.OrderBy(row => row.LastSeenUtc)
 				.Select(ToKnownCharacter)
-				.ToArray();
-		}
-	}
+				.ToArray(),
+			Array.Empty<KnownCharacter>());
 
-	public IReadOnlyList<KnownCharacter> GetHidden()
-	{
-		lock (this.gate)
-		{
-			if (this.disposed)
-			{
-				return Array.Empty<KnownCharacter>();
-			}
-
-			return this.connection.Table<KnownCharacterRow>()
+	public IReadOnlyList<KnownCharacter> GetHidden() =>
+		this.Read<IReadOnlyList<KnownCharacter>>(
+			() => this.connection.Table<KnownCharacterRow>()
 				.Where(row => row.LookupState == (int)NearbyLookupState.NotFound)
 				.OrderBy(row => row.LastSeenUtc)
 				.Select(ToKnownCharacter)
-				.ToArray();
-		}
-	}
+				.ToArray(),
+			Array.Empty<KnownCharacter>());
 
-	public IReadOnlyList<KnownCharacter> GetAllWithFreeCompanyTag()
-	{
-		lock (this.gate)
-		{
-			if (this.disposed)
-			{
-				return Array.Empty<KnownCharacter>();
-			}
-
-			return this.connection.Table<KnownCharacterRow>()
+	public IReadOnlyList<KnownCharacter> GetAllWithFreeCompanyTag() =>
+		this.Read<IReadOnlyList<KnownCharacter>>(
+			() => this.connection.Table<KnownCharacterRow>()
 				.Where(row => row.FreeCompanyTag != null && row.FreeCompanyTag != "")
 				.Select(ToKnownCharacter)
-				.ToArray();
-		}
-	}
+				.ToArray(),
+			Array.Empty<KnownCharacter>());
 
-	public IReadOnlyList<string> GetAllNameWorldKeys()
-	{
-		lock (this.gate)
-		{
-			if (this.disposed)
-			{
-				return Array.Empty<string>();
-			}
-
-			return this.connection.Query<NameWorldKeyRow>("SELECT NameWorldKey FROM KnownCharacters")
+	public IReadOnlyList<string> GetAllNameWorldKeys() =>
+		this.Read<IReadOnlyList<string>>(
+			() => this.connection.Query<NameWorldKeyRow>("SELECT NameWorldKey FROM KnownCharacters")
 				.Select(row => row.NameWorldKey)
-				.ToArray();
-		}
-	}
+				.ToArray(),
+			Array.Empty<string>());
 
 	public void DeleteMany(IEnumerable<ulong> contentIds)
 	{
@@ -345,23 +246,15 @@ public sealed partial class CharacterDirectory : IDisposable
 			return;
 		}
 
-		lock (this.gate)
+		this.Write(() => this.connection.RunInTransaction(() =>
 		{
-			if (this.disposed)
+			foreach (var chunk in ids.Chunk(BulkQueryBatchSize))
 			{
-				return;
+				var chunkIds = chunk.ToList();
+				this.connection.Table<KnownCharacterRow>().Delete(row => chunkIds.Contains(row.ContentId));
+				this.nameHistory.DeleteForContentIds(chunkIds);
 			}
-
-			this.connection.RunInTransaction(() =>
-			{
-				foreach (var chunk in ids.Chunk(BulkQueryBatchSize))
-				{
-					var chunkIds = chunk.ToList();
-					this.connection.Table<KnownCharacterRow>().Delete(row => chunkIds.Contains(row.ContentId));
-					this.nameHistory.DeleteForContentIds(chunkIds);
-				}
-			});
-		}
+		}));
 	}
 
 	public void RecordNameHistory(ulong contentId, string name, string homeWorldName, DateTime seenUntilUtc) =>
@@ -385,6 +278,27 @@ public sealed partial class CharacterDirectory : IDisposable
 	#endregion
 
 	#region Private Implementation
+
+	private T Read<T>(Func<T> body, T whenDisposed)
+	{
+		lock (this.gate)
+		{
+			return this.disposed ? whenDisposed : body();
+		}
+	}
+
+	private void Write(Action body)
+	{
+		lock (this.gate)
+		{
+			if (this.disposed)
+			{
+				return;
+			}
+
+			body();
+		}
+	}
 
 	private void UpsertSnapshotRow(
 		ulong contentId, string nameWorldKey, PlayerLocalData data, DateTime lastSeenUtc)

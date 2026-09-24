@@ -26,60 +26,46 @@ internal sealed partial class NameHistoryStore
 	}
 
 	public void RecordNameHistory(
-		ulong contentId, string name, string homeWorldName, DateTime seenUntilUtc)
-	{
-		lock (this.gate)
+		ulong contentId, string name, string homeWorldName, DateTime seenUntilUtc) =>
+		this.Write(() => this.connection.Insert(new NameHistoryRow
 		{
-			if (this.isDisposed())
-			{
-				return;
-			}
+			ContentId = (long)contentId,
+			Name = name,
+			HomeWorldName = homeWorldName,
+			SeenUntilUtc = UtcTimestamp.Format(seenUntilUtc),
+		}));
 
-			this.connection.Insert(new NameHistoryRow
-			{
-				ContentId = (long)contentId,
-				Name = name,
-				HomeWorldName = homeWorldName,
-				SeenUntilUtc = UtcTimestamp.Format(seenUntilUtc),
-			});
-		}
-	}
-
-	public IReadOnlyList<string> GetHistoryWorldNames(ulong contentId)
-	{
-		lock (this.gate)
-		{
-			if (this.isDisposed())
-			{
-				return Array.Empty<string>();
-			}
-
-			return this.connection.Table<NameHistoryRow>()
+	public IReadOnlyList<string> GetHistoryWorldNames(ulong contentId) =>
+		this.Read<IReadOnlyList<string>>(
+			() => this.connection.Table<NameHistoryRow>()
 				.Where(row => row.ContentId == (long)contentId)
 				.Select(row => row.HomeWorldName)
-				.ToList();
-		}
-	}
+				.ToList(),
+			Array.Empty<string>());
 
-	public IReadOnlyList<NameHistoryEntry> GetNameHistory(ulong contentId)
-	{
-		lock (this.gate)
-		{
-			if (this.isDisposed())
-			{
-				return Array.Empty<NameHistoryEntry>();
-			}
-
-			return this.connection.Table<NameHistoryRow>()
+	public IReadOnlyList<NameHistoryEntry> GetNameHistory(ulong contentId) =>
+		this.Read<IReadOnlyList<NameHistoryEntry>>(
+			() => this.connection.Table<NameHistoryRow>()
 				.Where(row => row.ContentId == (long)contentId)
 				.OrderByDescending(row => row.Id)
 				.Select(row => new NameHistoryEntry(
 					row.Name, row.HomeWorldName, UtcTimestamp.Parse(row.SeenUntilUtc)))
-				.ToArray();
+				.ToArray(),
+			Array.Empty<NameHistoryEntry>());
+
+	public void DeleteForContentIds(IReadOnlyList<long> contentIds) =>
+		this.Write(() =>
+			this.connection.Table<NameHistoryRow>().Delete(row => contentIds.Contains(row.ContentId)));
+
+	private T Read<T>(Func<T> body, T whenDisposed)
+	{
+		lock (this.gate)
+		{
+			return this.isDisposed() ? whenDisposed : body();
 		}
 	}
 
-	public void DeleteForContentIds(IReadOnlyList<long> contentIds)
+	private void Write(Action body)
 	{
 		lock (this.gate)
 		{
@@ -88,7 +74,7 @@ internal sealed partial class NameHistoryStore
 				return;
 			}
 
-			this.connection.Table<NameHistoryRow>().Delete(row => contentIds.Contains(row.ContentId));
+			body();
 		}
 	}
 

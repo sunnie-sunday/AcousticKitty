@@ -32,20 +32,22 @@ internal static class DatabaseCapEnforcer
 	};
 
 	public static IReadOnlyList<KnownCharacter> GetUnverifiedCandidates(
-		CharacterDirectory characterDirectory, EchoStore echoStore)
-	{
-		var verifiedIds = echoStore.GetAllVerifiedLodestoneIds();
-		return characterDirectory.GetFoundOrAccessRestricted()
+		CharacterDirectory characterDirectory, EchoStore echoStore) =>
+		GetUnverifiedCandidates(characterDirectory, echoStore.GetAllVerifiedLodestoneIds());
+
+	public static IReadOnlyList<KnownCharacter> GetUnverifiedCandidates(
+		CharacterDirectory characterDirectory, IReadOnlySet<ulong> verifiedIds) =>
+		characterDirectory.GetFoundOrAccessRestricted()
 			.Where(known => known.LodestoneId != null && !verifiedIds.Contains(known.LodestoneId.Value))
 			.ToArray();
-	}
 
 	public static void EnforceUnverified(
 		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, EchoStore echoStore,
 		ulong? currentlyVerifyingContentId)
 	{
-		var pinnedIds = new HashSet<ulong>(echoStore.GetAllPinned().Select(pin => pin.LodestoneId));
-		var candidates = DatabaseCapEnforcer.GetUnverifiedCandidates(characterDirectory, echoStore)
+		var verifiedIds = echoStore.GetAllVerifiedLodestoneIds();
+		var pinnedIds = echoStore.GetAllPinnedLodestoneIds(verifiedIds);
+		var candidates = DatabaseCapEnforcer.GetUnverifiedCandidates(characterDirectory, verifiedIds)
 			.Select(known => (
 				known.Data.ContentId,
 				LodestoneId: known.LodestoneId!.Value,
@@ -79,40 +81,12 @@ internal static class DatabaseCapEnforcer
 		var seenNameWorldKeys = new HashSet<string>(characterDirectory.GetAllNameWorldKeys());
 		var resolvedByKey = lodestoneCache.GetAllResolved().ToDictionary(resolved => resolved.Key);
 
-		var candidates = new List<(string Key, DateTime Timestamp)>();
-		var candidateKeys = new HashSet<string>();
-
-		foreach (var cached in lodestoneCache.GetAllCachedProfiles())
-		{
-			var hasResolved = resolvedByKey.TryGetValue(cached.Key, out var resolvedForKey);
-			var name = hasResolved ? resolvedForKey!.Name : cached.Profile.Value.Name;
-			var homeWorldId = hasResolved ? resolvedForKey!.HomeWorldId : cached.Profile.Value.HomeWorldId;
-			var nameWorldKey = CharacterDirectory.BuildNameWorldKey(name, homeWorldId);
-			if (seenNameWorldKeys.Contains(nameWorldKey))
-			{
-				continue;
-			}
-
-			candidates.Add((cached.Key, cached.FetchedAtUtc));
-			candidateKeys.Add(cached.Key);
-		}
-
-		foreach (var resolved in resolvedByKey.Values)
-		{
-			if (candidateKeys.Contains(resolved.Key))
-			{
-				continue;
-			}
-
-			var nameWorldKey = CharacterDirectory.BuildNameWorldKey(resolved.Name, resolved.HomeWorldId);
-			if (seenNameWorldKeys.Contains(nameWorldKey))
-			{
-				continue;
-			}
-
-			candidates.Add((resolved.Key, resolved.ResolvedAtUtc));
-			candidateKeys.Add(resolved.Key);
-		}
+		var candidates = UnseenCandidates
+			.Enumerate(
+				lodestoneCache.GetAllCachedProfiles(), resolvedByKey, seenNameWorldKeys,
+				ownNameWorldKey: null)
+			.Select(row => (row.Key, row.Timestamp))
+			.ToList();
 
 		OldestFirstEviction.Trim(
 			candidates, cap, _ => true, item => item.Timestamp,
@@ -124,7 +98,7 @@ internal static class DatabaseCapEnforcer
 		int cap)
 	{
 		var verifiedIds = echoStore.GetAllVerifiedLodestoneIds();
-		var pinnedIds = new HashSet<ulong>(echoStore.GetAllPinned().Select(pin => pin.LodestoneId));
+		var pinnedIds = echoStore.GetAllPinnedLodestoneIds(verifiedIds);
 
 		var candidates = characterDirectory.GetFoundOrAccessRestricted()
 			.Where(known => known.LodestoneId != null && verifiedIds.Contains(known.LodestoneId.Value))

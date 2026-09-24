@@ -95,6 +95,7 @@ public sealed class Plugin : IDalamudPlugin
 			this.echoStore,
 			this.characterDirectory,
 			DataManager,
+			PlayerState,
 			this.AvatarTextureCache,
 			this.EchoService,
 			this.freeCompanyIdIndex,

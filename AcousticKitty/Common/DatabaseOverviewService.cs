@@ -206,7 +206,7 @@ public sealed class DatabaseOverviewService(
 	private IReadOnlyList<DatabaseEntryViewModel> BuildVerifiedOrUnverifiedList(bool wantVerified)
 	{
 		var verifiedAtByLodestoneId = echoStore.GetAllVerified();
-		var pinnedIds = new HashSet<ulong>(echoStore.GetAllPinned().Select(pin => pin.LodestoneId));
+		var pinnedIds = echoStore.GetAllPinnedLodestoneIds(verifiedAtByLodestoneId.Keys.ToHashSet());
 
 		var candidates = characterDirectory.GetFoundOrAccessRestricted()
 			.Where(known =>
@@ -303,86 +303,52 @@ public sealed class DatabaseOverviewService(
 			DatabaseCapEnforcer.ResolveCap(configuration.DatabaseCacheTier));
 
 		var seenNameWorldKeys = new HashSet<string>(characterDirectory.GetAllNameWorldKeys());
-		var cachedProfilesByKey = lodestoneCache.GetAllCachedProfiles().ToDictionary(cached => cached.Key);
 		var resolvedByKey = lodestoneCache.GetAllResolved().ToDictionary(resolved => resolved.Key);
 
 		var ownNameWorldKey = playerState.IsLoaded
-			? CharacterDirectory.BuildNameWorldKey(playerState.CharacterName, playerState.HomeWorld.RowId)
+			? CharacterKey.Build(playerState.CharacterName, playerState.HomeWorld.RowId)
 			: null;
-		var unseenEntries = this.BuildUnseenList(
-			cachedProfilesByKey, resolvedByKey, seenNameWorldKeys, ownNameWorldKey);
 
-		this.unseen = unseenEntries
-			.OrderByDescending(entry => entry.Timestamp)
-			.Select(entry => entry.Entry)
+		this.unseen = UnseenCandidates
+			.Enumerate(
+				lodestoneCache.GetAllCachedProfiles(), resolvedByKey, seenNameWorldKeys, ownNameWorldKey)
+			.Select(this.BuildUnseenEntry)
+			.OrderByDescending(item => item.Timestamp)
+			.Select(item => item.Entry)
 			.ToArray();
 		log.Verbose(
 			$"Reloaded Database Unseen tab: {this.unseen.Count} in {stopwatch.ElapsedMilliseconds} ms.");
 	}
 
-	private List<(DatabaseEntryViewModel Entry, string Key, DateTime Timestamp)> BuildUnseenList(
-		Dictionary<string, CachedProfileEntry> cachedProfilesByKey,
-		Dictionary<string, ResolvedCharacterEntry> resolvedByKey,
-		HashSet<string> seenNameWorldKeys,
-		string? ownNameWorldKey)
+	private (DatabaseEntryViewModel Entry, DateTime Timestamp) BuildUnseenEntry(UnseenRow row)
 	{
-		var unseenEntries = new List<(DatabaseEntryViewModel Entry, string Key, DateTime Timestamp)>();
-		var unseenKeys = new HashSet<string>();
-		foreach (var cached in cachedProfilesByKey.Values)
+		var worldName = GameDataResolver.ResolveWorldName(dataManager, row.HomeWorldId);
+		var dataCenterName = GameDataResolver.ResolveDataCenterName(dataManager, row.HomeWorldId);
+
+		if (row.Cached is { } cached)
 		{
-			var hasResolved = resolvedByKey.TryGetValue(cached.Key, out var resolvedForKey);
-			var name = hasResolved ? resolvedForKey!.Name : cached.Profile.Value.Name;
-			var homeWorldId = hasResolved ? resolvedForKey!.HomeWorldId : cached.Profile.Value.HomeWorldId;
-
-			var nameWorldKey = CharacterDirectory.BuildNameWorldKey(name, homeWorldId);
-			if (seenNameWorldKeys.Contains(nameWorldKey) || nameWorldKey == ownNameWorldKey)
-			{
-				continue;
-			}
-
-			var worldName = GameDataResolver.ResolveWorldName(dataManager, homeWorldId);
-			var dataCenterName = GameDataResolver.ResolveDataCenterName(dataManager, homeWorldId);
-			var jobAbbreviation = hasResolved && resolvedForKey!.JobId is { } jobId
+			var resolved = row.Resolved;
+			var jobAbbreviation = resolved?.JobId is { } jobId
 				? GameDataResolver.ResolveJobAbbreviation(dataManager, jobId)
 				: null;
 			var entry = new DatabaseEntryViewModel(
-				cached.Key, name, worldName, false,
+				row.Key, row.Name, worldName, false,
 				cached.Profile, cached.FetchedAtUtc, null, null,
-				resolvedForKey?.AvatarUrlHash, dataCenterName, jobAbbreviation,
-				resolvedForKey?.Level?.ToString());
-			unseenEntries.Add((entry, cached.Key, cached.FetchedAtUtc));
-			unseenKeys.Add(cached.Key);
+				resolved?.AvatarUrlHash, dataCenterName, jobAbbreviation,
+				resolved?.Level?.ToString());
+			return (entry, row.Timestamp);
 		}
 
-		foreach (var resolved in resolvedByKey.Values)
-		{
-			if (unseenKeys.Contains(resolved.Key))
-			{
-				continue;
-			}
-
-			var nameWorldKey = CharacterDirectory.BuildNameWorldKey(resolved.Name, resolved.HomeWorldId);
-			if (seenNameWorldKeys.Contains(nameWorldKey) || nameWorldKey == ownNameWorldKey)
-			{
-				continue;
-			}
-
-			var worldName = GameDataResolver.ResolveWorldName(dataManager, resolved.HomeWorldId);
-			var dataCenterName = GameDataResolver.ResolveDataCenterName(dataManager, resolved.HomeWorldId);
-			var jobAbbreviation = resolved.JobId is { } jobId
-				? GameDataResolver.ResolveJobAbbreviation(dataManager, jobId)
-				: null;
-
-			var (profile, profileFetchedAtUtc) = LodestoneProfile.ResolveOrPartial(null, resolved);
-			var entry = new DatabaseEntryViewModel(
-				resolved.Key, resolved.Name, worldName, false,
-				profile, profileFetchedAtUtc, null, null, resolved.AvatarUrlHash, dataCenterName,
-				jobAbbreviation, resolved.Level?.ToString());
-			unseenEntries.Add((entry, resolved.Key, resolved.ResolvedAtUtc));
-			unseenKeys.Add(resolved.Key);
-		}
-
-		return unseenEntries;
+		var onlyResolved = row.Resolved!;
+		var resolvedJobAbbreviation = onlyResolved.JobId is { } resolvedJobId
+			? GameDataResolver.ResolveJobAbbreviation(dataManager, resolvedJobId)
+			: null;
+		var (profile, profileFetchedAtUtc) = LodestoneProfile.ResolveOrPartial(null, onlyResolved);
+		var resolvedEntry = new DatabaseEntryViewModel(
+			row.Key, onlyResolved.Name, worldName, false,
+			profile, profileFetchedAtUtc, null, null, onlyResolved.AvatarUrlHash, dataCenterName,
+			resolvedJobAbbreviation, onlyResolved.Level?.ToString());
+		return (resolvedEntry, row.Timestamp);
 	}
 
 	private static Lazy<IReadOnlyList<NameHistoryEntry>> LazyNameHistory(

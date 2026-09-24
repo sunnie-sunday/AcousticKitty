@@ -211,7 +211,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 		var rows = snapshots.Select(data =>
 		{
 			this.RecordRenameIfChanged(data);
-			var nameWorldKey = CharacterDirectory.BuildNameWorldKey(data.Name, data.HomeWorldId);
+			var nameWorldKey = CharacterKey.Build(data.Name, data.HomeWorldId);
 			return (data.ContentId, nameWorldKey, data, scanUtc);
 		}).ToArray();
 		this.characterDirectory.UpsertSnapshots(rows);
@@ -311,7 +311,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 
 	private void HandleNameReuseIfDetected(PlayerLocalData data, DateTime nowUtc)
 	{
-		var nameWorldKey = CharacterDirectory.BuildNameWorldKey(data.Name, data.HomeWorldId);
+		var nameWorldKey = CharacterKey.Build(data.Name, data.HomeWorldId);
 		var priorHolder = this.characterDirectory.TryGetActiveHolder(nameWorldKey, data.ContentId);
 		if (priorHolder == null)
 		{

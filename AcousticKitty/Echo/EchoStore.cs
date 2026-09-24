@@ -41,132 +41,106 @@ public sealed class EchoStore : IDisposable
 		DatabaseVacuum.RunInBackground(this.connection, this.gate, () => this.disposed);
 	}
 
-	public void Pin(ulong lodestoneId, string name, uint homeWorldId)
-	{
-		lock (this.gate)
+	public void Pin(ulong lodestoneId, string name, uint homeWorldId) =>
+		this.Write(() => this.connection.InsertOrReplace(new PinRow
 		{
-			if (this.disposed)
-			{
-				return;
-			}
+			Key = EchoStore.KeyFor(lodestoneId),
+			Name = name,
+			HomeWorldId = homeWorldId,
+		}));
 
+	public bool IsPinned(ulong lodestoneId) =>
+		this.Read(() => this.connection.Find<PinRow>(EchoStore.KeyFor(lodestoneId)) != null, false);
+
+	public bool IsVerified(ulong lodestoneId) =>
+		this.Read(() => this.connection.Find<VerifiedRow>(EchoStore.KeyFor(lodestoneId)) != null, false);
+
+	public IReadOnlyList<PinnedCharacter> GetAllPinned() =>
+		this.Read<IReadOnlyList<PinnedCharacter>>(
+			() =>
+			{
+				var stopwatch = Stopwatch.StartNew();
+				var result = this.connection.Table<PinRow>()
+					.Select(pin => (pin, verified: this.connection.Find<VerifiedRow>(pin.Key)))
+					.Where(row => row.verified != null)
+					.Select(row => new PinnedCharacter(
+						EchoStore.ParseKey(row.pin.Key), row.pin.Name, (uint)row.pin.HomeWorldId, null, null,
+						UtcTimestamp.Parse(row.verified!.VerifiedAtUtc)))
+					.ToArray();
+
+				this.log.Verbose(
+					$"EchoStore.GetAllPinned: {result.Length} pinned character(s) in " +
+					$"{stopwatch.ElapsedMilliseconds} ms.");
+				return result;
+			},
+			Array.Empty<PinnedCharacter>());
+
+	public void MarkVerified(ulong lodestoneId, DateTime verifiedAtUtc) =>
+		this.Write(() => this.connection.InsertOrReplace(new VerifiedRow
+		{
+			Key = EchoStore.KeyFor(lodestoneId),
+			VerifiedAtUtc = UtcTimestamp.Format(verifiedAtUtc),
+		}));
+
+	public void PinAndMarkVerified(
+		ulong lodestoneId, string name, uint homeWorldId, DateTime verifiedAtUtc) =>
+		this.Write(() => this.connection.RunInTransaction(() =>
+		{
+			var key = EchoStore.KeyFor(lodestoneId);
 			this.connection.InsertOrReplace(new PinRow
 			{
-				Key = EchoStore.KeyFor(lodestoneId),
+				Key = key,
 				Name = name,
 				HomeWorldId = homeWorldId,
 			});
-		}
-	}
-
-	public bool IsPinned(ulong lodestoneId)
-	{
-		lock (this.gate)
-		{
-			if (this.disposed)
-			{
-				return false;
-			}
-
-			return this.connection.Find<PinRow>(EchoStore.KeyFor(lodestoneId)) != null;
-		}
-	}
-
-	public bool IsVerified(ulong lodestoneId)
-	{
-		lock (this.gate)
-		{
-			if (this.disposed)
-			{
-				return false;
-			}
-
-			return this.connection.Find<VerifiedRow>(EchoStore.KeyFor(lodestoneId)) != null;
-		}
-	}
-
-	public IReadOnlyList<PinnedCharacter> GetAllPinned()
-	{
-		lock (this.gate)
-		{
-			if (this.disposed)
-			{
-				return Array.Empty<PinnedCharacter>();
-			}
-
-			var stopwatch = Stopwatch.StartNew();
-			var result = this.connection.Table<PinRow>()
-				.Select(pin => (pin, verified: this.connection.Find<VerifiedRow>(pin.Key)))
-				.Where(row => row.verified != null)
-				.Select(row => new PinnedCharacter(
-					EchoStore.ParseKey(row.pin.Key), row.pin.Name, (uint)row.pin.HomeWorldId, null, null,
-					UtcTimestamp.Parse(row.verified!.VerifiedAtUtc)))
-				.ToArray();
-
-			this.log.Verbose(
-				$"EchoStore.GetAllPinned: {result.Length} pinned character(s) in " +
-				$"{stopwatch.ElapsedMilliseconds} ms.");
-			return result;
-		}
-	}
-
-	public void MarkVerified(ulong lodestoneId, DateTime verifiedAtUtc)
-	{
-		lock (this.gate)
-		{
-			if (this.disposed)
-			{
-				return;
-			}
-
 			this.connection.InsertOrReplace(new VerifiedRow
 			{
-				Key = EchoStore.KeyFor(lodestoneId),
+				Key = key,
 				VerifiedAtUtc = UtcTimestamp.Format(verifiedAtUtc),
 			});
-		}
-	}
+		}));
 
-	public IReadOnlySet<ulong> GetAllVerifiedLodestoneIds()
-	{
-		lock (this.gate)
-		{
-			if (this.disposed)
-			{
-				return new HashSet<ulong>();
-			}
-
-			return this.connection.Table<VerifiedRow>()
+	public IReadOnlySet<ulong> GetAllVerifiedLodestoneIds() =>
+		this.Read<IReadOnlySet<ulong>>(
+			() => this.connection.Table<VerifiedRow>()
 				.Select(row => row.Key)
 				.ToList()
 				.Select(EchoStore.TryParseKey)
 				.Where(id => id != null)
 				.Select(id => id!.Value)
-				.ToHashSet();
-		}
-	}
+				.ToHashSet(),
+			new HashSet<ulong>());
 
-	public IReadOnlyDictionary<ulong, DateTime> GetAllVerified()
-	{
-		lock (this.gate)
-		{
-			if (this.disposed)
-			{
-				return new Dictionary<ulong, DateTime>();
-			}
+	public IReadOnlySet<ulong> GetAllPinnedLodestoneIds() =>
+		this.GetAllPinnedLodestoneIds(this.GetAllVerifiedLodestoneIds());
 
-			var result = new Dictionary<ulong, DateTime>();
-			foreach (var row in this.connection.Table<VerifiedRow>())
+	public IReadOnlySet<ulong> GetAllPinnedLodestoneIds(IReadOnlySet<ulong> verifiedIds) =>
+		this.Read<IReadOnlySet<ulong>>(
+			() => this.connection.Table<PinRow>()
+				.Select(row => row.Key)
+				.ToList()
+				.Select(EchoStore.TryParseKey)
+				.Where(id => id != null && verifiedIds.Contains(id!.Value))
+				.Select(id => id!.Value)
+				.ToHashSet(),
+			new HashSet<ulong>());
+
+	public IReadOnlyDictionary<ulong, DateTime> GetAllVerified() =>
+		this.Read<IReadOnlyDictionary<ulong, DateTime>>(
+			() =>
 			{
-				if (EchoStore.TryParseKey(row.Key) is { } lodestoneId)
+				var result = new Dictionary<ulong, DateTime>();
+				foreach (var row in this.connection.Table<VerifiedRow>())
 				{
-					result[lodestoneId] = UtcTimestamp.Parse(row.VerifiedAtUtc);
+					if (EchoStore.TryParseKey(row.Key) is { } lodestoneId)
+					{
+						result[lodestoneId] = UtcTimestamp.Parse(row.VerifiedAtUtc);
+					}
 				}
-			}
 
-			return result;
-		}
-	}
+				return result;
+			},
+			new Dictionary<ulong, DateTime>());
 
 	public void DeleteVerified(IEnumerable<ulong> lodestoneIds)
 	{
@@ -176,81 +150,49 @@ public sealed class EchoStore : IDisposable
 			return;
 		}
 
-		lock (this.gate)
+		this.Write(() => this.connection.RunInTransaction(() =>
 		{
-			if (this.disposed)
+			foreach (var chunk in keyList.Chunk(BulkQueryBatchSize))
 			{
-				return;
+				var chunkKeys = chunk.ToList();
+				this.connection.Table<VerifiedRow>().Delete(row => chunkKeys.Contains(row.Key));
 			}
-
-			this.connection.RunInTransaction(() =>
-			{
-				foreach (var chunk in keyList.Chunk(BulkQueryBatchSize))
-				{
-					var chunkKeys = chunk.ToList();
-					this.connection.Table<VerifiedRow>().Delete(row => chunkKeys.Contains(row.Key));
-				}
-			});
-		}
+		}));
 	}
 
 	public void SavePinnedProfileSnapshot(
-		ulong lodestoneId, LodestoneProfile profile, DateTime? fetchedAtUtc)
-	{
-		lock (this.gate)
+		ulong lodestoneId, LodestoneProfile profile, DateTime? fetchedAtUtc) =>
+		this.Write(() => this.connection.InsertOrReplace(new PinnedProfileRow
 		{
-			if (this.disposed)
-			{
-				return;
-			}
+			Key = EchoStore.KeyFor(lodestoneId),
+			ProfileJson = JsonSerializer.Serialize(profile),
+			FetchedAtUtc = fetchedAtUtc.HasValue ? UtcTimestamp.Format(fetchedAtUtc.Value) : null,
+		}));
 
-			this.connection.InsertOrReplace(new PinnedProfileRow
+	public PinnedProfileSnapshot? TryGetPinnedProfileSnapshot(ulong lodestoneId) =>
+		this.Read<PinnedProfileSnapshot?>(
+			() =>
 			{
-				Key = EchoStore.KeyFor(lodestoneId),
-				ProfileJson = JsonSerializer.Serialize(profile),
-				FetchedAtUtc = fetchedAtUtc.HasValue ? UtcTimestamp.Format(fetchedAtUtc.Value) : null,
-			});
-		}
-	}
+				var row = this.connection.Find<PinnedProfileRow>(EchoStore.KeyFor(lodestoneId));
+				if (row == null ||
+					JsonSerializer.Deserialize<LodestoneProfile>(row.ProfileJson) is not { } profile)
+				{
+					return null;
+				}
 
-	public PinnedProfileSnapshot? TryGetPinnedProfileSnapshot(ulong lodestoneId)
-	{
-		lock (this.gate)
+				var fetchedAtUtc = string.IsNullOrEmpty(row.FetchedAtUtc)
+					? (DateTime?)null
+					: UtcTimestamp.Parse(row.FetchedAtUtc);
+				return new PinnedProfileSnapshot(profile, fetchedAtUtc);
+			},
+			null);
+
+	public void MigrateKeysToLodestoneId(Func<string, ulong?> resolveLodestoneId) =>
+		this.Write(() => this.connection.RunInTransaction(() =>
 		{
-			if (this.disposed)
-			{
-				return null;
-			}
-
-			var row = this.connection.Find<PinnedProfileRow>(EchoStore.KeyFor(lodestoneId));
-			if (row == null || JsonSerializer.Deserialize<LodestoneProfile>(row.ProfileJson) is not { } profile)
-			{
-				return null;
-			}
-
-			var fetchedAtUtc = string.IsNullOrEmpty(row.FetchedAtUtc)
-				? (DateTime?)null
-				: UtcTimestamp.Parse(row.FetchedAtUtc);
-			return new PinnedProfileSnapshot(profile, fetchedAtUtc);
-		}
-	}
-
-	public void MigrateKeysToLodestoneId(Func<string, ulong?> resolveLodestoneId)
-	{
-		lock (this.gate)
-		{
-			if (this.disposed)
-			{
-				return;
-			}
-
-			this.connection.RunInTransaction(() =>
-			{
-				this.MigrateVerifiedRows(resolveLodestoneId);
-				this.MigratePinRows(resolveLodestoneId);
-			});
-		}
-	}
+			this.MigrateVerifiedRows(resolveLodestoneId);
+			this.MigratePinRows(resolveLodestoneId);
+		}));
 
 	public void Dispose()
 	{
@@ -264,6 +206,27 @@ public sealed class EchoStore : IDisposable
 	#endregion
 
 	#region Migration
+
+	private T Read<T>(Func<T> body, T whenDisposed)
+	{
+		lock (this.gate)
+		{
+			return this.disposed ? whenDisposed : body();
+		}
+	}
+
+	private void Write(Action body)
+	{
+		lock (this.gate)
+		{
+			if (this.disposed)
+			{
+				return;
+			}
+
+			body();
+		}
+	}
 
 	private void MigrateVerifiedRows(Func<string, ulong?> resolveLodestoneId)
 	{

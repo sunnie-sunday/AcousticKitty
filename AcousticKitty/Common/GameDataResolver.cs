@@ -39,13 +39,26 @@ public static class GameDataResolver
 	private static readonly Dictionary<uint, string> DataCenterIdToNameCache = new();
 	private static readonly object DataCenterIdToNameGate = new();
 
+	private static readonly Dictionary<uint, string> WorldIdToDataCenterNameCache = new();
+	private static readonly object WorldIdToDataCenterNameGate = new();
+
 	public static string ResolveDataCenterName(IDataManager dataManager, uint worldId)
 	{
-		var dataCenterRowId = dataManager.GetExcelSheet<World>(ClientLanguage.English)
-			.GetRowOrDefault(worldId)?.DataCenter.RowId;
-		return dataCenterRowId is { } rowId
-			? ResolveDataCenterNameById(dataManager, rowId)
-			: $"World #{worldId}";
+		lock (WorldIdToDataCenterNameGate)
+		{
+			if (WorldIdToDataCenterNameCache.TryGetValue(worldId, out var cached))
+			{
+				return cached;
+			}
+
+			var dataCenterRowId = dataManager.GetExcelSheet<World>(ClientLanguage.English)
+				.GetRowOrDefault(worldId)?.DataCenter.RowId;
+			var name = dataCenterRowId is { } rowId
+				? ResolveDataCenterNameById(dataManager, rowId)
+				: $"World #{worldId}";
+			WorldIdToDataCenterNameCache[worldId] = name;
+			return name;
+		}
 	}
 
 	public static string ResolveDataCenterNameById(IDataManager dataManager, uint dataCenterId)

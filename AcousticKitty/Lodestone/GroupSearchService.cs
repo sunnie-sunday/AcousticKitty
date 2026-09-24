@@ -23,6 +23,7 @@ public sealed class GroupSearchService(
 	EchoStore echoStore,
 	CharacterDirectory characterDirectory,
 	IDataManager dataManager,
+	IPlayerState playerState,
 	AvatarTextureCache avatarCache,
 	EchoService echo,
 	FreeCompanyIdIndex freeCompanyIdIndex,
@@ -295,6 +296,10 @@ public sealed class GroupSearchService(
 			string? AvatarUrlHash, int? Level, uint? JobId, ulong? FreeCompanyId,
 			string? FreeCompanyName)>(entries.Count);
 
+		var ownNameWorldKey = playerState.IsLoaded
+			? CharacterKey.Build(playerState.CharacterName, playerState.HomeWorld.RowId)
+			: null;
+
 		foreach (var rawEntry in entries)
 		{
 			var entry = knownFreeCompanyId != null
@@ -302,7 +307,18 @@ public sealed class GroupSearchService(
 				: rawEntry;
 
 			var viewModel = new GroupMemberViewModel(entry);
-			var nameWorldKey = CharacterDirectory.BuildNameWorldKey(entry.Name, entry.HomeWorldId);
+			var nameWorldKey = CharacterKey.Build(entry.Name, entry.HomeWorldId);
+
+			if (ownNameWorldKey != null && nameWorldKey == ownNameWorldKey)
+			{
+				viewModel.Profile = LodestoneProfile.BuildPartial(
+					entry.CharacterId, entry.Name, entry.HomeWorldId, entry.AvatarUrlHash,
+					entry.FreeCompanyId, entry.FreeCompanyName, entry.JobId, entry.Level);
+				viewModel.ProfileState = MemberProfileState.Loaded;
+				collected.Add(viewModel);
+				continue;
+			}
+
 			viewModel.KnownCharacter = characterDirectory.TryGetByNameWorldKey(nameWorldKey);
 
 			if (viewModel.KnownCharacter == null &&
