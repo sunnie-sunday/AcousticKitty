@@ -34,6 +34,7 @@ public sealed class EchoService : IDisposable
 	private static readonly TimeSpan DefaultRetryAfter = TimeSpan.FromSeconds(10);
 	private static readonly TimeSpan MaxCharacterBackoff = TimeSpan.FromMinutes(30);
 	private static readonly TimeSpan NoEligibleMatchPollInterval = TimeSpan.FromSeconds(1);
+	private static readonly TimeSpan IdlePollInterval = TimeSpan.FromSeconds(15);
 	private static readonly TimeSpan SnapshotRebuildInterval = TimeSpan.FromSeconds(1);
 	private static readonly TimeSpan AutoStartCheckInterval = TimeSpan.FromSeconds(5);
 
@@ -203,6 +204,22 @@ public sealed class EchoService : IDisposable
 				known.Data.ContentId, known.Data.Name, known.Data.HomeWorldId, known.LodestoneId!.Value))
 			.ToArray();
 
+	private TimeSpan DelayUntilNextEligible(IReadOnlyList<PendingMatch> candidates)
+	{
+		var now = DateTime.UtcNow;
+		var soonest = candidates
+			.Select(candidate => this.nextEligibleAtUtc.GetValueOrDefault(candidate.ContentId, now))
+			.DefaultIfEmpty(now)
+			.Min();
+		var wait = soonest - now;
+		if (wait < NoEligibleMatchPollInterval)
+		{
+			return NoEligibleMatchPollInterval;
+		}
+
+		return wait < IdlePollInterval ? wait : IdlePollInterval;
+	}
+
 	private async Task ProcessQueueAsync()
 	{
 		if (Interlocked.CompareExchange(ref this.isProcessingFlag, 1, 0) != 0)
@@ -234,7 +251,7 @@ public sealed class EchoService : IDisposable
 					this.statusReason = null;
 					this.nextEligibleAtUtc.Clear();
 					this.consecutiveFailures.Clear();
-					await Task.Delay(NoEligibleMatchPollInterval, stopCts.Token).ConfigureAwait(false);
+					await Task.Delay(IdlePollInterval, stopCts.Token).ConfigureAwait(false);
 					continue;
 				}
 
@@ -244,7 +261,8 @@ public sealed class EchoService : IDisposable
 				if (match == null)
 				{
 					this.state = EchoQueueState.WaitingToRetry;
-					await Task.Delay(NoEligibleMatchPollInterval, stopCts.Token).ConfigureAwait(false);
+					await Task.Delay(this.DelayUntilNextEligible(candidates), stopCts.Token)
+						.ConfigureAwait(false);
 					continue;
 				}
 
