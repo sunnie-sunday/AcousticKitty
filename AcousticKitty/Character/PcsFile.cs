@@ -158,7 +158,7 @@ public sealed partial class CharacterDirectory
 
 public sealed partial class NearbyCharactersService
 {
-	public void ImportSnapshots(IReadOnlyList<PlayerLocalData> imported)
+	internal void ImportSnapshots(IReadOnlyList<PcsFile.ImportedCharacter> imported)
 	{
 		if (imported.Count == 0)
 		{
@@ -166,22 +166,22 @@ public sealed partial class NearbyCharactersService
 		}
 
 		var importUtc = DateTime.UtcNow;
-		var rows = imported.Select(data =>
+		var rows = imported.Select(item =>
 		{
-			this.RecordRenameIfChanged(data);
-			var nameWorldKey = CharacterDirectory.BuildNameWorldKey(data.Name, data.HomeWorldId);
-			return (data.ContentId, nameWorldKey, data);
+			this.RecordRenameIfChanged(item.Data);
+			var nameWorldKey = CharacterDirectory.BuildNameWorldKey(item.Data.Name, item.Data.HomeWorldId);
+			return (item.Data.ContentId, nameWorldKey, item.Data, item.TimeSeenUtc);
 		}).ToArray();
 
-		this.characterDirectory.UpsertSnapshots(rows, importUtc);
+		this.characterDirectory.UpsertSnapshots(rows);
 
-		var contentIds = imported.Select(data => data.ContentId).ToArray();
+		var contentIds = imported.Select(item => item.Data.ContentId).ToArray();
 		this.characterDirectory.PrioritizeForLookup(contentIds, importUtc);
 
 		var importedViewModels = new List<NearbyMemberViewModel>(imported.Count);
-		foreach (var data in imported)
+		foreach (var item in imported)
 		{
-			if (this.characterDirectory.TryGetByContentId(data.ContentId) is { } known)
+			if (this.characterDirectory.TryGetByContentId(item.Data.ContentId) is { } known)
 			{
 				importedViewModels.Add(this.BuildViewModel(known));
 			}

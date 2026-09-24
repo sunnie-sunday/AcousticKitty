@@ -118,7 +118,7 @@ internal sealed class NearbyTab(Plugin plugin, FileDialogManager fileDialogManag
 
 		this.importValidationError = null;
 		var nearby = plugin.NearbyCharactersService;
-		nearby.ImportSnapshots(imported.Select(row => row.Data).ToArray());
+		nearby.ImportSnapshots(imported);
 		this.RefreshSnapshot(nearby);
 	}
 

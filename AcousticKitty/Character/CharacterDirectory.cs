@@ -110,8 +110,7 @@ public sealed partial class CharacterDirectory : IDisposable
 	}
 
 	public void UpsertSnapshots(
-		IReadOnlyList<(ulong ContentId, string NameWorldKey, PlayerLocalData Data)> snapshots,
-		DateTime lastSeenUtc)
+		IReadOnlyList<(ulong ContentId, string NameWorldKey, PlayerLocalData Data, DateTime LastSeenUtc)> snapshots)
 	{
 		if (snapshots.Count == 0)
 		{
@@ -130,7 +129,7 @@ public sealed partial class CharacterDirectory : IDisposable
 				foreach (var snapshot in snapshots)
 				{
 					this.UpsertSnapshotRow(
-						snapshot.ContentId, snapshot.NameWorldKey, snapshot.Data, lastSeenUtc);
+						snapshot.ContentId, snapshot.NameWorldKey, snapshot.Data, snapshot.LastSeenUtc);
 				}
 			});
 		}

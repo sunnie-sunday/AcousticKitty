@@ -211,9 +211,9 @@ public sealed partial class NearbyCharactersService : IDisposable
 		{
 			this.RecordRenameIfChanged(data);
 			var nameWorldKey = CharacterDirectory.BuildNameWorldKey(data.Name, data.HomeWorldId);
-			return (data.ContentId, nameWorldKey, data);
+			return (data.ContentId, nameWorldKey, data, scanUtc);
 		}).ToArray();
-		this.characterDirectory.UpsertSnapshots(rows, scanUtc);
+		this.characterDirectory.UpsertSnapshots(rows);
 
 		var liveList = new List<NearbyMemberViewModel>(snapshots.Count);
 		foreach (var data in snapshots)
