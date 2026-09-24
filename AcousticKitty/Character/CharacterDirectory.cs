@@ -203,6 +203,14 @@ public sealed partial class CharacterDirectory : IDisposable
 			},
 			Array.Empty<KnownCharacter>());
 
+	public int CountFoundOrAccessRestricted() =>
+		this.Read(
+			() => this.connection.Table<KnownCharacterRow>()
+				.Count(row =>
+					row.LookupState == (int)NearbyLookupState.Found ||
+					row.LookupState == (int)NearbyLookupState.AccessRestricted),
+			0);
+
 	public IReadOnlyList<KnownCharacter> GetFoundOrAccessRestricted() =>
 		this.Read<IReadOnlyList<KnownCharacter>>(
 			() => this.connection.Table<KnownCharacterRow>()
@@ -213,6 +221,12 @@ public sealed partial class CharacterDirectory : IDisposable
 				.Select(ToKnownCharacter)
 				.ToArray(),
 			Array.Empty<KnownCharacter>());
+
+	public int CountHidden() =>
+		this.Read(
+			() => this.connection.Table<KnownCharacterRow>()
+				.Count(row => row.LookupState == (int)NearbyLookupState.NotFound),
+			0);
 
 	public IReadOnlyList<KnownCharacter> GetHidden() =>
 		this.Read<IReadOnlyList<KnownCharacter>>(

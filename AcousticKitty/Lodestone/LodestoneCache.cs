@@ -257,6 +257,9 @@ public sealed partial class LodestoneCache : IDisposable
 			},
 			Array.Empty<CachedProfileEntry>());
 
+	public int CountResolved() =>
+		this.Read(() => this.connection.Table<ResolvedCharacterRow>().Count(), 0);
+
 	public IReadOnlyList<ResolvedCharacterEntry> GetAllResolved() =>
 		this.Read<IReadOnlyList<ResolvedCharacterEntry>>(
 			() => this.connection.Table<ResolvedCharacterRow>()

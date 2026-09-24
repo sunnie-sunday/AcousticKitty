@@ -25,7 +25,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 
 	private static readonly TimeSpan QueueRebuildInterval = TimeSpan.FromSeconds(1);
 
-	private static readonly TimeSpan CapEnforcementInterval = TimeSpan.FromSeconds(60);
+	private static readonly TimeSpan CapEnforcementInterval = TimeSpan.FromMinutes(15);
 	private static readonly TimeSpan ReuseHoldDuration = TimeSpan.FromHours(72);
 
 	private static readonly TimeSpan NoWorkPollInterval = TimeSpan.FromSeconds(1);

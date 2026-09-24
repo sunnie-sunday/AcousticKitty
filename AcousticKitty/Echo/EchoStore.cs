@@ -125,6 +125,9 @@ public sealed class EchoStore : IDisposable
 				.ToHashSet(),
 			new HashSet<ulong>());
 
+	public int CountVerified() =>
+		this.Read(() => this.connection.Table<VerifiedRow>().Count(), 0);
+
 	public IReadOnlyDictionary<ulong, DateTime> GetAllVerified() =>
 		this.Read<IReadOnlyDictionary<ulong, DateTime>>(
 			() =>

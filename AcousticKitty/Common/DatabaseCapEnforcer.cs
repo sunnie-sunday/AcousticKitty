@@ -31,6 +31,8 @@ internal static class DatabaseCapEnforcer
 		_ => 25_000,
 	};
 
+	private static int EnforcementCeiling(int cap) => cap + (cap / 10);
+
 	public static IReadOnlyList<KnownCharacter> GetUnverifiedCandidates(
 		CharacterDirectory characterDirectory, EchoStore echoStore) =>
 		GetUnverifiedCandidates(characterDirectory, echoStore.GetAllVerifiedLodestoneIds());
@@ -69,6 +71,11 @@ internal static class DatabaseCapEnforcer
 
 	public static void EnforceHidden(CharacterDirectory characterDirectory, int cap)
 	{
+		if (characterDirectory.CountHidden() <= EnforcementCeiling(cap))
+		{
+			return;
+		}
+
 		var candidates = characterDirectory.GetHidden().ToList();
 		OldestFirstEviction.Trim(
 			candidates, cap, _ => true, known => known.LastSeenUtc,
@@ -78,6 +85,12 @@ internal static class DatabaseCapEnforcer
 	public static void EnforceUnseen(
 		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, int cap)
 	{
+		if (lodestoneCache.CountResolved() - characterDirectory.CountFoundOrAccessRestricted()
+			<= EnforcementCeiling(cap))
+		{
+			return;
+		}
+
 		var seenNameWorldKeys = new HashSet<string>(characterDirectory.GetAllNameWorldKeys());
 		var resolvedByKey = lodestoneCache.GetAllResolved().ToDictionary(resolved => resolved.Key);
 
@@ -97,6 +110,11 @@ internal static class DatabaseCapEnforcer
 		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, EchoStore echoStore,
 		int cap)
 	{
+		if (echoStore.CountVerified() <= EnforcementCeiling(cap))
+		{
+			return;
+		}
+
 		var verifiedIds = echoStore.GetAllVerifiedLodestoneIds();
 		var pinnedIds = echoStore.GetAllPinnedLodestoneIds(verifiedIds);
 
