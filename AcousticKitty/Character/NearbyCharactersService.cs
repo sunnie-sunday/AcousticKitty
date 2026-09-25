@@ -25,7 +25,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 
 	private static readonly TimeSpan QueueRebuildInterval = TimeSpan.FromSeconds(1);
 
-	private static readonly TimeSpan CapEnforcementInterval = TimeSpan.FromMinutes(15);
+	private static readonly TimeSpan PeriodicUpkeepInterval = TimeSpan.FromMinutes(15);
 	private static readonly TimeSpan ReuseHoldDuration = TimeSpan.FromHours(72);
 
 	private static readonly TimeSpan NoWorkPollInterval = TimeSpan.FromSeconds(1);
@@ -50,7 +50,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 
 	private DateTime lastScanUtc = DateTime.MinValue;
 	private DateTime lastQueueRebuildUtc = DateTime.MinValue;
-	private DateTime lastCapEnforcementUtc = DateTime.MinValue;
+	private DateTime lastPeriodicUpkeepUtc = DateTime.MinValue;
 	private int drainingFlag;
 	private volatile bool isProcessingScan;
 	private CancellationTokenSource? drainStopCts;
@@ -234,7 +234,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 
 		this.currentlyNearby = liveList;
 		this.RebuildQueueSnapshot();
-		this.EnforceCapsIfDue();
+		this.RunPeriodicUpkeepIfDue();
 
 		if (this.configuration.NearbySearchMode == NearbySearchMode.Auto)
 		{
@@ -242,20 +242,31 @@ public sealed partial class NearbyCharactersService : IDisposable
 		}
 	}
 
-	private void EnforceCapsIfDue()
+	private void RunPeriodicUpkeepIfDue()
 	{
 		var now = DateTime.UtcNow;
-		if (now - this.lastCapEnforcementUtc < CapEnforcementInterval)
+		if (now - this.lastPeriodicUpkeepUtc < PeriodicUpkeepInterval)
 		{
 			return;
 		}
 
-		this.lastCapEnforcementUtc = now;
+		this.lastPeriodicUpkeepUtc = now;
+
+		this.ForceResolveHiddenViaFreeCompanies();
+
 		var cap = DatabaseCapEnforcer.ResolveCap(this.configuration.DatabaseCacheTier);
 		DatabaseCapEnforcer.EnforceHidden(this.characterDirectory, cap);
 		DatabaseCapEnforcer.EnforceUnseen(this.characterDirectory, this.lodestoneCache, cap);
 		DatabaseCapEnforcer.EnforceVerified(
 			this.characterDirectory, this.lodestoneCache, this.echoStore, cap);
+	}
+
+	private void ForceResolveHiddenViaFreeCompanies()
+	{
+		foreach (var known in this.characterDirectory.GetHidden())
+		{
+			this.TryForceResolveViaKnownFreeCompany(known);
+		}
 	}
 
 	private static unsafe PlayerLocalData? SnapshotCharacter(

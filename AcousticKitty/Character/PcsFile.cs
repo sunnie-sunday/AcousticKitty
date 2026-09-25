@@ -195,7 +195,7 @@ public sealed partial class NearbyCharactersService
 
 		this.lastQueueRebuildUtc = DateTime.MinValue;
 		this.RebuildQueueSnapshot();
-		this.EnforceCapsIfDue();
+		this.RunPeriodicUpkeepIfDue();
 
 		if (this.configuration.NearbySearchMode == NearbySearchMode.Auto)
 		{
