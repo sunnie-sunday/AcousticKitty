@@ -166,7 +166,8 @@ internal sealed class QueuesTab(Plugin plugin)
 			PagedList.Apply(filterCache, items, nameFilter, nameSelector, ref page, PageSize);
 
 		PagedList.DrawScrollableList(
-			idSuffix, filteredCount, pageItems, "No characters match this filter.", drawRow, drawPinnedRows);
+			idSuffix, filteredCount, pageItems, "No characters match this filter.", drawRow, drawPinnedRows,
+			virtualizeUniformRows: true);
 
 		PagedList.DrawFilterAndPagerFooter(ref nameFilter, ref page, totalPages, idSuffix);
 	}

@@ -85,7 +85,8 @@ internal static class PagedList
 		IReadOnlyList<T> pageItems,
 		string emptyMessage,
 		Action<T> drawItem,
-		Action? drawPinnedRows = null)
+		Action? drawPinnedRows = null,
+		bool virtualizeUniformRows = false)
 	{
 		var footerHeight = ImGui.GetFrameHeightWithSpacing();
 		using (ImRaii.Child(childId, new Vector2(0, -footerHeight), true))
@@ -96,6 +97,10 @@ internal static class PagedList
 			{
 				ImGui.TextWrapped(emptyMessage);
 			}
+			else if (virtualizeUniformRows)
+			{
+				PagedList.DrawVirtualizedRows(pageItems, drawItem);
+			}
 			else
 			{
 				foreach (var item in pageItems)
@@ -105,6 +110,23 @@ internal static class PagedList
 				}
 			}
 		}
+	}
+
+	private static void DrawVirtualizedRows<T>(IReadOnlyList<T> pageItems, Action<T> drawItem)
+	{
+		var clipper = ImGui.ImGuiListClipper();
+		clipper.Begin(pageItems.Count);
+		while (clipper.Step())
+		{
+			for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
+			{
+				drawItem(pageItems[i]);
+				ImGui.Separator();
+			}
+		}
+
+		clipper.End();
+		clipper.Destroy();
 	}
 }
 
