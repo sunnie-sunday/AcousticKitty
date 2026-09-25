@@ -6,7 +6,7 @@
 using System;
 using SQLite;
 
-namespace AcousticKitty.Common;
+namespace AcousticKitty.Lodestone;
 
 internal static class KeyedRowMigration
 {

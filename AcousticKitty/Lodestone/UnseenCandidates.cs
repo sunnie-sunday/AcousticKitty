@@ -5,9 +5,9 @@
 
 using System;
 using System.Collections.Generic;
-using AcousticKitty.Lodestone;
+using AcousticKitty.Common;
 
-namespace AcousticKitty.Common;
+namespace AcousticKitty.Lodestone;
 
 internal readonly record struct UnseenRow(
 	CachedProfileEntry? Cached,

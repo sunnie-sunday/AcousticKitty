@@ -8,7 +8,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace AcousticKitty.Common;
+namespace AcousticKitty.Lodestone;
 
 public sealed class RateLimiter(TimeSpan interval)
 {

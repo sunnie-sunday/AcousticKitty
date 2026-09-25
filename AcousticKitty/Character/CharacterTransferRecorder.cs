@@ -4,11 +4,11 @@
 // SPDX-FileContributor: Contributions by /xivg/
 
 using System;
-using AcousticKitty.Character;
+using AcousticKitty.Common;
 using AcousticKitty.Lodestone;
 using Dalamud.Plugin.Services;
 
-namespace AcousticKitty.Common;
+namespace AcousticKitty.Character;
 
 public static class CharacterTransferRecorder
 {
