@@ -202,12 +202,42 @@ public static class GameDataResolver
 		}
 	}
 
+	private const uint PrivateHousingIntendedUse = 14;
+
 	public static string ResolveTerritoryName(IDataManager dataManager, uint territoryId)
 	{
 		var territory =
 			dataManager.GetExcelSheet<TerritoryType>(ClientLanguage.English).GetRowOrDefault(territoryId);
 		var placeName = territory?.PlaceName.ValueNullable?.Name.ToString();
-		return string.IsNullOrEmpty(placeName) ? $"Territory #{territoryId}" : placeName;
+		if (!string.IsNullOrEmpty(placeName))
+		{
+			return placeName;
+		}
+
+		if (territory is { } row && row.TerritoryIntendedUse.RowId == PrivateHousingIntendedUse &&
+			ResolvePrivateHouseSize(row.Name.ToString()) is { } houseSize)
+		{
+			return houseSize;
+		}
+
+		return $"Territory #{territoryId}";
+	}
+
+	private static string? ResolvePrivateHouseSize(string interiorCode)
+	{
+		var marker = interiorCode.IndexOf('i');
+		if (marker < 0 || marker + 1 >= interiorCode.Length)
+		{
+			return null;
+		}
+
+		return interiorCode[marker + 1] switch
+		{
+			'1' => "Private Cottage",
+			'2' => "Private House",
+			'3' => "Private Mansion",
+			_ => null,
+		};
 	}
 
 	public static IReadOnlyList<string> GetAllPublicWorldNames(IDataManager dataManager) =>
