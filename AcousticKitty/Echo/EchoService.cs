@@ -61,6 +61,7 @@ public sealed class EchoService : IDisposable
 
 	private DateTime nextRetryUtc;
 	private DateTime lastSnapshotRebuildUtc = DateTime.MinValue;
+	private int snapshotRebuildInFlight;
 	private volatile IReadOnlyList<PendingMatch> pendingSnapshot = Array.Empty<PendingMatch>();
 
 	private long currentlyVerifyingContentId = -1;
@@ -93,7 +94,7 @@ public sealed class EchoService : IDisposable
 		this.framework.Update += this.OnFrameworkUpdate;
 
 		this.RebuildPendingSnapshot();
-		if (this.pendingSnapshot.Count > 0 && this.configuration.EchoQueueMode == EchoQueueMode.Auto)
+		if (this.configuration.EchoQueueMode == EchoQueueMode.Auto)
 		{
 			_ = this.ProcessQueueAsync();
 		}
@@ -194,8 +195,27 @@ public sealed class EchoService : IDisposable
 			return;
 		}
 
+		if (Interlocked.CompareExchange(ref this.snapshotRebuildInFlight, 1, 0) != 0)
+		{
+			return;
+		}
+
 		this.lastSnapshotRebuildUtc = now;
-		this.pendingSnapshot = this.GetUnverifiedMatches();
+		_ = Task.Run(() =>
+		{
+			try
+			{
+				this.pendingSnapshot = this.GetUnverifiedMatches();
+			}
+			catch (Exception ex)
+			{
+				this.log.Error(ex, "Failed to rebuild the Echo pending snapshot.");
+			}
+			finally
+			{
+				Interlocked.Exchange(ref this.snapshotRebuildInFlight, 0);
+			}
+		});
 	}
 
 	private IReadOnlyList<PendingMatch> GetUnverifiedMatches() =>

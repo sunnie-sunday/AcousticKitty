@@ -50,6 +50,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 
 	private DateTime lastScanUtc = DateTime.MinValue;
 	private DateTime lastQueueRebuildUtc = DateTime.MinValue;
+	private int queueRebuildInFlight;
 	private DateTime lastPeriodicUpkeepUtc = DateTime.MinValue;
 	private int drainingFlag;
 	private volatile bool isProcessingScan;
@@ -371,13 +372,32 @@ public sealed partial class NearbyCharactersService : IDisposable
 			return;
 		}
 
+		if (Interlocked.CompareExchange(ref this.queueRebuildInFlight, 1, 0) != 0)
+		{
+			return;
+		}
+
 		this.lastQueueRebuildUtc = now;
-		var stopwatch = Stopwatch.StartNew();
-		var pending = this.characterDirectory.GetPending(MaxQueueSnapshotSize);
-		this.queue = pending.Select(this.BuildQueueRowViewModel).ToArray();
-		this.log.Verbose(
-			$"Rebuilt Lodestone queue snapshot: {this.queue.Count} row(s) in " +
-			$"{stopwatch.ElapsedMilliseconds} ms.");
+		_ = Task.Run(() =>
+		{
+			try
+			{
+				var stopwatch = Stopwatch.StartNew();
+				var pending = this.characterDirectory.GetPending(MaxQueueSnapshotSize);
+				this.queue = pending.Select(this.BuildQueueRowViewModel).ToArray();
+				this.log.Verbose(
+					$"Rebuilt Lodestone queue snapshot: {this.queue.Count} row(s) in " +
+					$"{stopwatch.ElapsedMilliseconds} ms.");
+			}
+			catch (Exception ex)
+			{
+				this.log.Error(ex, "Failed to rebuild the Lodestone queue snapshot.");
+			}
+			finally
+			{
+				Interlocked.Exchange(ref this.queueRebuildInFlight, 0);
+			}
+		});
 	}
 
 	private NearbyMemberViewModel BuildQueueRowViewModel(KnownCharacter known)
