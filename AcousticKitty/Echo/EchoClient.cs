@@ -136,23 +136,42 @@ public sealed class EchoClient : IEchoClient
 			characterName,
 			homeWorldName,
 			contentId.ToString(CultureInfo.InvariantCulture));
-		using var response = await this
-			.SendSignedAsync("/v1/auth/verify/start", registration, body, cancellationToken, transcript)
+
+		var startTranscript = transcript != null ? new StringBuilder() : null;
+		using (var startResponse = await this
+			.SendSignedAsync("/v1/auth/verify/start", registration, body, cancellationToken, startTranscript)
+			.ConfigureAwait(false))
+		{
+			if (startResponse.StatusCode == HttpStatusCode.Conflict)
+			{
+				transcript?.Append(startTranscript);
+				return EchoSaveOutcome.AlreadyPinned;
+			}
+
+			if (!startResponse.IsSuccessStatusCode)
+			{
+				var reason = await EchoClient.ReadErrorAsync(startResponse, cancellationToken)
+					.ConfigureAwait(false);
+				throw new EchoException($"Echo \"verify/start\" request failed: {reason}");
+			}
+		}
+
+		var completeTranscript = transcript != null ? new StringBuilder() : null;
+		using var completeResponse = await this
+			.SendSignedAsync(
+				"/v1/auth/verify/complete",
+				registration,
+				new VerifyCompleteRequest(EchoClient.ProtocolVersion),
+				cancellationToken,
+				completeTranscript)
 			.ConfigureAwait(false);
+		transcript?.Append(completeTranscript);
 
-		if (response.StatusCode == HttpStatusCode.Conflict)
-		{
-			return EchoSaveOutcome.AlreadyPinned;
-		}
-
-		if (!response.IsSuccessStatusCode)
-		{
-			var reason = await EchoClient.ReadErrorAsync(response, cancellationToken)
-				.ConfigureAwait(false);
-			throw new EchoException($"Echo \"saved\" request failed: {reason}");
-		}
-
-		return EchoSaveOutcome.Saved;
+		var result = await EchoClient.ReadSuccessJsonAsync<VerifyCompleteResponse>(
+			completeResponse, JsonOptions, cancellationToken).ConfigureAwait(false);
+		return result.Reason == "already_claimed"
+			? EchoSaveOutcome.AlreadyPinned
+			: EchoSaveOutcome.Saved;
 	}
 
 	#endregion
@@ -465,6 +484,10 @@ public sealed class EchoClient : IEchoClient
 		string CharacterName,
 		string HomeWorldName,
 		string ContentId);
+
+	private sealed record VerifyCompleteRequest(int ProtocolVersion);
+
+	private sealed record VerifyCompleteResponse(bool Verified, string? Reason);
 
 	#endregion
 }
