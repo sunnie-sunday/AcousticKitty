@@ -24,5 +24,4 @@ public sealed record DatabaseEntryViewModel(
 	string? JobAbbreviation = null,
 	string? LevelText = null,
 	Lazy<IReadOnlyList<NameHistoryEntry>>? NameHistory = null,
-	bool IsVerified = false,
 	bool IsConflicted = false);

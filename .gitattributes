@@ -10,3 +10,4 @@
 *.pdb binary
 *.zip binary
 *.xcf binary
+*.db3 binary

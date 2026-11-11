@@ -26,7 +26,6 @@ internal sealed record CharacterRowData(
 	PlayerLocalData? CharacterData,
 	DateTime? CharacterDataAsOfUtc,
 	Lazy<IReadOnlyList<NameHistoryEntry>>? NameHistory = null,
-	bool IsVerified = false,
 	DateTime? ProfileAsOfUtc = null,
 	bool ShowsOverride = false,
 	bool IsConflicted = false);
@@ -39,12 +38,8 @@ internal static class MemberRow
 		var rowStart = ImGui.GetCursorScreenPos();
 		var rowWidth = ImGui.GetContentRegionAvail().X;
 
-		var isQueued = row.Profile != null && row.CharacterData != null;
-
 		var background = row.IsConflicted ? ImGuiColors.InfoBackground
 			: row.IsPinned ? ImGuiColors.ErrorBackground
-			: row.IsVerified ? ImGuiColors.SuccessBackground
-			: isQueued ? ImGuiColors.InfoBackground
 			: (Vector4?)null;
 
 		if (background != null)
@@ -56,7 +51,7 @@ internal static class MemberRow
 		if (!row.ShowsOverride)
 		{
 			StatusBadge.DrawOverlay(
-				row.Id, row.IsConflicted, row.IsPinned, row.IsVerified, isQueued, rowStart, rowWidth);
+				row.Id, row.IsConflicted, row.IsPinned, rowStart, rowWidth);
 		}
 
 		ProfileView.DrawAvatar(plugin, row.AvatarUrl, 64f);

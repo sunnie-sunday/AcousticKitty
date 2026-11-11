@@ -210,7 +210,6 @@ internal sealed class SearchTab(Plugin plugin)
 					? new Lazy<IReadOnlyList<NameHistoryEntry>>(
 						() => plugin.GroupSearchService.GetNameHistory(known.Data.ContentId))
 					: null,
-				member.IsVerified,
 				member.ProfileFetchedAtUtc,
 				IsConflicted: member.IsConflicted));
 	}

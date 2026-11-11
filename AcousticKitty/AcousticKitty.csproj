@@ -6,7 +6,7 @@
 		<Author>Sunnie Sunday</Author>
 		<Name>Acoustic Kitty</Name>
 		<Punchline>Counterintelligence plugin.</Punchline>
-		<Description>Cross-references nearby in-game characters against their Lodestone profile, and builds an audit queue against EchoVault's registration to see if they're already verified sightings contributors. Echo's API used to find stalkers can optionally be routed through a SOCKS5 proxy.</Description>
+		<Description>Cross-references nearby in-game characters against their Lodestone profile, and flags known EchoVault sightings contributors (stalkers) from a list bundled with the plugin. Only The Lodestone is ever contacted.</Description>
 		<RepoUrl>https://github.com/sunnie-sunday/AcousticKitty</RepoUrl>
 		<Tags>Lodestone;Character;Profile</Tags>
 		<!-- Only used for a real (non-dev) install. -->
@@ -21,7 +21,6 @@
 		<PackageReference Include="HtmlAgilityPack" Version="1.13.0" />
 		<PackageReference Include="sqlite-net-pcl" Version="1.11.285" />
 		<PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
-		<PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
 		<PackageReference Include="JsonSchema.Net" Version="9.4.0" />
 	</ItemGroup>
 
@@ -39,8 +38,8 @@
 		<Content Include="..\schemas\pcs.schema.json" Link="pcs.schema.json">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
-		<!-- Sunnie Sunday Report log frontmatter schema, included at the root next to the DLL. -->
-		<Content Include="..\schemas\log.schema.json" Link="log.schema.json">
+		<!-- Bundled read-only list of pinned Echo contributors, included at the root next to the DLL. -->
+		<Content Include="..\data\echo.db3" Link="echo.db3">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
 	</ItemGroup>

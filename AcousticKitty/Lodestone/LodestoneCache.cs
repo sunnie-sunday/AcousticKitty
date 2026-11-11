@@ -5,11 +5,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using AcousticKitty.Common;
+using AcousticKitty.Echo;
 using SQLite;
 
 namespace AcousticKitty.Lodestone;
@@ -32,6 +34,7 @@ public sealed partial class LodestoneCache : IDisposable
 		this.connection = new SQLiteConnection(databasePath);
 		this.connection.CreateTable<ResolvedCharacterRow>();
 		this.connection.CreateTable<CachedProfileRow>();
+		this.connection.CreateTable<PinnedProfileRow>();
 		DatabaseVacuum.RunInBackground(this.connection, this.gate, () => this.disposed);
 	}
 
@@ -326,6 +329,34 @@ public sealed partial class LodestoneCache : IDisposable
 		return result;
 	}
 
+	public void SavePinnedProfileSnapshot(
+		ulong lodestoneId, LodestoneProfile profile, DateTime? fetchedAtUtc) =>
+		this.Write(() => this.connection.InsertOrReplace(new PinnedProfileRow
+		{
+			Key = lodestoneId.ToString(CultureInfo.InvariantCulture),
+			ProfileJson = JsonSerializer.Serialize(profile),
+			FetchedAtUtc = fetchedAtUtc.HasValue ? UtcTimestamp.Format(fetchedAtUtc.Value) : null,
+		}));
+
+	public PinnedProfileSnapshot? TryGetPinnedProfileSnapshot(ulong lodestoneId) =>
+		this.Read<PinnedProfileSnapshot?>(
+			() =>
+			{
+				var row = this.connection.Find<PinnedProfileRow>(
+					lodestoneId.ToString(CultureInfo.InvariantCulture));
+				if (row == null ||
+					JsonSerializer.Deserialize<LodestoneProfile>(row.ProfileJson) is not { } profile)
+				{
+					return null;
+				}
+
+				var fetchedAtUtc = string.IsNullOrEmpty(row.FetchedAtUtc)
+					? (DateTime?)null
+					: UtcTimestamp.Parse(row.FetchedAtUtc);
+				return new PinnedProfileSnapshot(profile, fetchedAtUtc);
+			},
+			null);
+
 	private T Read<T>(Func<T> body, T whenDisposed)
 	{
 		lock (this.gate)
@@ -394,6 +425,17 @@ public sealed partial class LodestoneCache : IDisposable
 		public string ProfileJson { get; set; } = string.Empty;
 
 		public string FetchedAtUtc { get; set; } = string.Empty;
+	}
+
+	[Table("PinnedProfiles")]
+	private sealed class PinnedProfileRow
+	{
+		[PrimaryKey]
+		public string Key { get; set; } = string.Empty;
+
+		public string ProfileJson { get; set; } = string.Empty;
+
+		public string? FetchedAtUtc { get; set; }
 	}
 
 	#endregion

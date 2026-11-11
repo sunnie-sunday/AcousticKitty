@@ -40,10 +40,9 @@ internal static class StatusBadge
 	private readonly record struct BadgeStyle(string Label, Vector4 Background);
 
 	public static void DrawOverlay(
-		string id, bool isConflicted, bool isPinned, bool isVerified, bool isQueued, Vector2 rowStart,
-		float rowWidth)
+		string id, bool isConflicted, bool isPinned, Vector2 rowStart, float rowWidth)
 	{
-		if (StatusBadge.Resolve(isConflicted, isPinned, isVerified, isQueued) is not { } style)
+		if (StatusBadge.Resolve(isConflicted, isPinned) is not { } style)
 		{
 			return;
 		}
@@ -62,11 +61,9 @@ internal static class StatusBadge
 		ImGui.SetCursorScreenPos(restore);
 	}
 
-	private static BadgeStyle? Resolve(bool isConflicted, bool isPinned, bool isVerified, bool isQueued) =>
+	private static BadgeStyle? Resolve(bool isConflicted, bool isPinned) =>
 		isConflicted ? new BadgeStyle("Conflict", ImGuiColors.InfoBackground)
 		: isPinned ? new BadgeStyle("Echo contributor", ImGuiColors.ErrorBackground)
-		: isVerified ? new BadgeStyle("Audit passed", ImGuiColors.SuccessBackground)
-		: isQueued ? new BadgeStyle("Queued", ImGuiColors.InfoBackground)
 		: null;
 }
 

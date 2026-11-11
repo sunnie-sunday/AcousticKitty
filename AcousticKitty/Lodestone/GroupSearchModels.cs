@@ -35,8 +35,6 @@ public sealed class GroupMemberViewModel(MemberListEntry entry)
 
 	public bool IsPinned { get; internal set; }
 
-	public bool IsVerified { get; internal set; }
-
 	public bool IsConflicted { get; internal set; }
 
 	public MemberProfileState ProfileState { get; internal set; } = MemberProfileState.NotPinned;
