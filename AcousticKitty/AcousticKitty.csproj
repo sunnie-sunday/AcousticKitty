@@ -34,7 +34,7 @@
 		<Content Include="..\images\logo.png" Link="images\logo.png">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
-		<!-- NekoScan's PCs JSON Schema file, included at the root next to the DLL. -->
+		<!-- SunnieScan's PCs JSON Schema file, included at the root next to the DLL. -->
 		<Content Include="..\schemas\pcs.schema.json" Link="pcs.schema.json">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>

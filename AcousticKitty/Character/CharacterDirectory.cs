@@ -155,6 +155,34 @@ public sealed partial class CharacterDirectory : IDisposable
 			this.connection.Update(row);
 		});
 
+	public int MigrateLegacyGenderToCustomize()
+	{
+		lock (this.gate)
+		{
+			if (this.disposed ||
+				!this.connection.GetTableInfo("KnownCharacters").Any(column => column.Name == "Gender"))
+			{
+				return 0;
+			}
+
+			var migrated = 0;
+			this.connection.RunInTransaction(() =>
+			{
+				var rows = this.connection.Table<LegacyGenderRow>()
+					.Where(row => row.Customize == null && row.Gender != null)
+					.ToList();
+				foreach (var row in rows)
+				{
+					row.Customize = CustomizeEncoding.EncodeBlankWithGender(row.Gender);
+					row.Gender = null;
+					this.connection.Update(row);
+					migrated += row.Customize != null ? 1 : 0;
+				}
+			});
+			return migrated;
+		}
+	}
+
 	public void QueueOverride(ulong contentId, ulong lodestoneId, DateTime priorityAtUtc) =>
 		this.Write(() =>
 		{
@@ -333,7 +361,7 @@ public sealed partial class CharacterDirectory : IDisposable
 		row.FreeCompanyTag = data.FreeCompanyTag;
 		row.TitleId = data.TitleId;
 		row.TerritoryId = data.TerritoryId;
-		row.Gender = data.Gender;
+		row.Customize = data.Customize;
 		row.LastSeenUtc = UtcTimestamp.Format(lastSeenUtc);
 
 		if (existing == null)
@@ -357,7 +385,7 @@ public sealed partial class CharacterDirectory : IDisposable
 			(uint)row.TitleId,
 			(uint)row.TerritoryId,
 			(uint)row.CurrentWorldId,
-			row.Gender),
+			row.Customize),
 		UtcTimestamp.Parse(row.LastSeenUtc),
 		row.LodestoneId.HasValue ? (ulong)row.LodestoneId.Value : null,
 		(NearbyLookupState)row.LookupState,
@@ -385,7 +413,7 @@ public sealed partial class CharacterDirectory : IDisposable
 		public string? FreeCompanyTag { get; set; }
 		public long TitleId { get; set; }
 		public long TerritoryId { get; set; }
-		public string Gender { get; set; } = string.Empty;
+		public string? Customize { get; set; }
 		public string LastSeenUtc { get; set; } = string.Empty;
 
 		[Indexed]
@@ -397,6 +425,17 @@ public sealed partial class CharacterDirectory : IDisposable
 		public string? PriorityAtUtc { get; set; }
 		public long? OverrideLodestoneId { get; set; }
 		public int ConsecutiveFailureCount { get; set; }
+	}
+
+	[Table("KnownCharacters")]
+	private sealed class LegacyGenderRow
+	{
+		[PrimaryKey]
+		public long ContentId { get; set; }
+
+		public string? Gender { get; set; }
+
+		public string? Customize { get; set; }
 	}
 
 	private sealed class NameWorldKeyRow

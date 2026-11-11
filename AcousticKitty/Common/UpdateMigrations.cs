@@ -5,6 +5,7 @@
 
 using System;
 using System.IO;
+using AcousticKitty.Character;
 using Dalamud.Plugin.Services;
 
 namespace AcousticKitty.Common;
@@ -17,7 +18,11 @@ internal static class UpdateMigrations
 
 	private static readonly string[] SqliteSidecarSuffixes = ["", "-wal", "-shm", "-journal"];
 
-	public static void Run(Configuration configuration, string pluginConfigDirectory, IPluginLog log)
+	public static void Run(
+		Configuration configuration,
+		string pluginConfigDirectory,
+		CharacterDirectory characterDirectory,
+		IPluginLog log)
 	{
 		if (configuration.Version >= UpdateMigrations.CurrentVersion)
 		{
@@ -27,6 +32,8 @@ internal static class UpdateMigrations
 		if (configuration.Version < 3)
 		{
 			UpdateMigrations.DeleteLegacyEchoStore(pluginConfigDirectory, log);
+			var migrated = characterDirectory.MigrateLegacyGenderToCustomize();
+			log.Information($"Migration v3: moved Gender into a blank Customize for {migrated} row(s).");
 		}
 
 		configuration.Version = UpdateMigrations.CurrentVersion;

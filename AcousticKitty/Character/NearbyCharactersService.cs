@@ -301,7 +301,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 			native->CharacterData.TitleId,
 			territoryId,
 			character.CurrentWorld.RowId,
-			character.CustomizeData.Sex == 0 ? "M" : "F");
+			CustomizeEncoding.Encode(character.Customize.ToArray()));
 	}
 
 	private void RecordRenameIfChanged(PlayerLocalData data)
