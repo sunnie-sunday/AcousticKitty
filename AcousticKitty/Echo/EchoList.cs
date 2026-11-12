@@ -5,9 +5,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
+using AcousticKitty.Common;
 using Dalamud.Plugin.Services;
 using SQLite;
 
@@ -15,18 +15,19 @@ namespace AcousticKitty.Echo;
 
 public sealed class EchoList
 {
-	public const string FileName = "echo.db3";
+	public const string FileName = "stalkers.db3";
 
 	private readonly IReadOnlyDictionary<ulong, PinnedCharacter> byContentId;
 	private readonly IReadOnlyDictionary<ulong, PinnedCharacter> byLodestoneId;
 	private readonly IReadOnlySet<string> nameWorldKeys;
 
-	public EchoList(string assemblyDirectory, IPluginLog log)
+	public EchoList(string assemblyDirectory, Func<string, uint?> resolveWorldId, IPluginLog log)
 	{
-		var pins = EchoList.Load(Path.Combine(assemblyDirectory, FileName), log);
+		var pins = EchoList.Load(Path.Combine(assemblyDirectory, FileName), resolveWorldId, log);
 		this.All = pins;
 		this.byContentId = pins
-			.GroupBy(pin => pin.ContentId)
+			.Where(pin => pin.ContentId is not null)
+			.GroupBy(pin => pin.ContentId!.Value)
 			.ToDictionary(group => group.Key, group => group.First());
 		this.byLodestoneId = pins
 			.GroupBy(pin => pin.LodestoneId)
@@ -41,14 +42,17 @@ public sealed class EchoList
 		this.byContentId.ContainsKey(contentId) ||
 		(lodestoneId is { } id && this.byLodestoneId.ContainsKey(id));
 
-	public bool IsPinnedLodestoneId(ulong lodestoneId) => this.byLodestoneId.ContainsKey(lodestoneId);
+	public bool IsPinnedLodestoneId(ulong lodestoneId) =>
+		this.byLodestoneId.ContainsKey(lodestoneId);
 
-	public bool IsPinnedNameWorldKey(string nameWorldKey) => this.nameWorldKeys.Contains(nameWorldKey);
+	public bool IsPinnedNameWorldKey(string nameWorldKey) =>
+		this.nameWorldKeys.Contains(nameWorldKey);
 
 	public PinnedCharacter? TryGetByContentId(ulong contentId) =>
 		this.byContentId.GetValueOrDefault(contentId);
 
-	private static IReadOnlyList<PinnedCharacter> Load(string databasePath, IPluginLog log)
+	private static IReadOnlyList<PinnedCharacter> Load(
+		string databasePath, Func<string, uint?> resolveWorldId, IPluginLog log)
 	{
 		if (!File.Exists(databasePath))
 		{
@@ -56,13 +60,13 @@ public sealed class EchoList
 			return Array.Empty<PinnedCharacter>();
 		}
 
-		List<PinRow> rows;
+		List<SunnieSundayReport.PinRow> rows;
 		try
 		{
 			var connectionString =
 				new SQLiteConnectionString(databasePath, SQLiteOpenFlags.ReadOnly, true);
 			using var connection = new SQLiteConnection(connectionString);
-			rows = connection.Table<PinRow>().ToList();
+			rows = connection.Table<SunnieSundayReport.PinRow>().ToList();
 		}
 		catch (Exception ex)
 		{
@@ -73,33 +77,20 @@ public sealed class EchoList
 		var pins = new List<PinnedCharacter>(rows.Count);
 		foreach (var row in rows)
 		{
-			var separator = row.NameWorldKey.LastIndexOf('@');
-			if (separator <= 0 ||
-				!uint.TryParse(
-					row.NameWorldKey.AsSpan(separator + 1), NumberStyles.None,
-					CultureInfo.InvariantCulture, out var homeWorldId))
+			if (resolveWorldId(row.HomeWorld) is not { } homeWorldId)
 			{
-				log.Warning($"{FileName}: skipping malformed key '{row.NameWorldKey}'.");
+				log.Warning($"{FileName}: skipping {row.Name}, unknown world '{row.HomeWorld}'.");
 				continue;
 			}
 
 			pins.Add(new PinnedCharacter(
-				(ulong)row.ContentId, (ulong)row.LodestoneId, row.NameWorldKey,
-				row.NameWorldKey[..separator], homeWorldId));
+				row.ContentId is { } contentId ? (ulong)contentId : null,
+				(ulong)row.LodestoneId,
+				CharacterKey.Build(row.Name, homeWorldId),
+				row.Name,
+				homeWorldId));
 		}
 
 		return pins;
-	}
-
-	[Table("Pins")]
-	private sealed class PinRow
-	{
-		[PrimaryKey]
-		public long ContentId { get; set; }
-
-		public string NameWorldKey { get; set; } = string.Empty;
-
-		[Indexed]
-		public long LodestoneId { get; set; }
 	}
 }

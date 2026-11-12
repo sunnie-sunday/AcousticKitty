@@ -9,7 +9,7 @@ using AcousticKitty.Lodestone;
 namespace AcousticKitty.Echo;
 
 public sealed record PinnedCharacter(
-	ulong ContentId,
+	ulong? ContentId,
 	ulong LodestoneId,
 	string NameWorldKey,
 	string Name,

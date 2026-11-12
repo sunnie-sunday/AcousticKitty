@@ -103,7 +103,8 @@ public sealed class DatabaseOverviewService(
 	{
 		var stopwatch = Stopwatch.StartNew();
 		var pins = echoList.All
-			.Select(pin => (Pin: pin, Known: characterDirectory.TryGetByContentId(pin.ContentId)
+			.Select(pin => (Pin: pin, Known:
+				(pin.ContentId is { } contentId ? characterDirectory.TryGetByContentId(contentId) : null)
 				?? characterDirectory.TryGetByLodestoneId(pin.LodestoneId)))
 			.ToList();
 

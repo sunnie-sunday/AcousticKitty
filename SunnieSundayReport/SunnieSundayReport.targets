@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<Project>
+	<!-- Generates stalkers.db3 from the report repo's character pages at <ReportVersion> -->
+	<ItemGroup>
+		<ProjectReference Include="$(MSBuildThisFileDirectory)SunnieSundayReport.csproj" ReferenceOutputAssembly="false" Private="false" OutputItemType="SunnieSundayReport" />
+	</ItemGroup>
+
+	<Target Name="GenerateEchoList" AfterTargets="ResolveProjectReferences">
+		<PropertyGroup>
+			<ReportDirectory>$(ProjectDir)$(BaseIntermediateOutputPath)report\$(ReportVersion)</ReportDirectory>
+			<EchoListPath>$(ProjectDir)$(IntermediateOutputPath)stalkers.db3</EchoListPath>
+		</PropertyGroup>
+		<Exec Condition="!Exists('$(ReportDirectory)')" Command="git -c advice.detachedHead=false clone --quiet --depth 1 --branch $(ReportVersion) https://github.com/sunnie-sunday/report &quot;$(ReportDirectory)&quot;" IgnoreStandardErrorWarningFormat="true" />
+		<Exec Command="&quot;$([MSBuild]::ValueOrDefault('$(DOTNET_HOST_PATH)', 'dotnet'))&quot; &quot;@(SunnieSundayReport)&quot; &quot;$(ReportDirectory)\content\characters&quot; &quot;$(EchoListPath)&quot;" />
+		<ItemGroup>
+			<Content Include="$(EchoListPath)" Link="stalkers.db3" CopyToOutputDirectory="PreserveNewest" />
+			<FileWrites Include="$(EchoListPath)" />
+		</ItemGroup>
+	</Target>
+</Project>
