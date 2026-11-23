@@ -1,7 +1,10 @@
-# Acoustic Kitty
-
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![AI-DECLARATION: assist](https://img.shields.io/badge/䷼%20AI--DECLARATION-assist-fef9c3?labelColor=fef9c3)](https://ai-declaration.md)
+<div align="center">
+	<img src="images/logo.png" width="96">
+	<h1>Acoustic Kitty</h1>
+	<p><em>Counterintelligence plugin for Final Fantasy XIV</em></p>
+	<a href="https://www.gnu.org/licenses/gpl-3.0"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
+	<a href="https://ai-declaration.md"><img src="https://img.shields.io/badge/䷼%20AI--DECLARATION-assist-fef9c3?labelColor=fef9c3" alt="AI-DECLARATION: assist"></a>
+</div>
 
 A [Dalamud](https://github.com/goatcorp/Dalamud) counterintelligence plugin for
 Final Fantasy XIV that cross-references nearby in-game characters against their
