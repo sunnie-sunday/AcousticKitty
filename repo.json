@@ -3,8 +3,8 @@
     "Author": "Sunnie Sunday",
     "Name": "Acoustic Kitty",
     "InternalName": "AcousticKitty",
-    "AssemblyVersion": "0.2.3.0",
-    "Description": "Cross-references nearby in-game characters against their Lodestone profile, and builds an audit queue against EchoVault's registration to see if they're already verified sightings contributors. Echo's API used to find stalkers can optionally be routed through a SOCKS5 proxy.",
+    "AssemblyVersion": "0.3.1.0",
+    "Description": "Cross-references nearby in-game characters against their Lodestone profile, and flags known EchoVault sightings contributors (stalkers) from a list bundled with the plugin. Only The Lodestone is ever contacted.",
     "ApplicableVersion": "any",
     "RepoUrl": "https://github.com/sunnie-sunday/AcousticKitty",
     "Tags": [
@@ -20,8 +20,8 @@
     "IconUrl": "https://raw.githubusercontent.com/sunnie-sunday/AcousticKitty/main/images/icon.png",
     "Punchline": "Counterintelligence plugin.",
     "AcceptsFeedback": true,
-    "DownloadLinkInstall": "https://github.com/sunnie-sunday/AcousticKitty/releases/download/v0.2.3/latest.zip",
-    "DownloadLinkUpdate": "https://github.com/sunnie-sunday/AcousticKitty/releases/download/v0.2.3/latest.zip",
-    "DownloadCount": 19
+    "DownloadLinkInstall": "https://github.com/sunnie-sunday/AcousticKitty/releases/download/v0.3.1/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/sunnie-sunday/AcousticKitty/releases/download/v0.3.1/latest.zip",
+    "DownloadCount": 53
   }
 ]
