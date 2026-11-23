@@ -13,7 +13,7 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<Compile Include="..\AcousticKitty\Echo\SunnieSundayReport.cs" />
+		<Compile Include="..\AcousticKitty\Echo\EchoModels.cs" />
 	</ItemGroup>
 
 	<ItemGroup>

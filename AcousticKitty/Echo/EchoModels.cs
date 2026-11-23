@@ -3,8 +3,7 @@
 // SPDX-FileType: SOURCE
 // SPDX-FileContributor: Contributions by /xivg/
 
-using System;
-using AcousticKitty.Lodestone;
+using SQLite;
 
 namespace AcousticKitty.Echo;
 
@@ -15,4 +14,18 @@ public sealed record PinnedCharacter(
 	string Name,
 	uint HomeWorldId);
 
-public sealed record PinnedProfileSnapshot(LodestoneProfile Profile, DateTime? FetchedAtUtc);
+[Table("Pins")]
+internal sealed class PinRow
+{
+	[PrimaryKey]
+	public long LodestoneId { get; set; }
+
+	[Indexed]
+	public long? ContentId { get; set; }
+
+	[NotNull]
+	public string Name { get; set; } = string.Empty;
+
+	[NotNull]
+	public string HomeWorld { get; set; } = string.Empty;
+}

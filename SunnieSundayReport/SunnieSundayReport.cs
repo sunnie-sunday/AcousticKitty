@@ -121,20 +121,4 @@ internal static class SunnieSundayReport
 		connection.CreateTable<PinRow>();
 		connection.InsertAll(rows);
 	}
-
-	[Table("Pins")]
-	internal sealed class PinRow
-	{
-		[PrimaryKey]
-		public long LodestoneId { get; set; }
-
-		[Indexed]
-		public long? ContentId { get; set; }
-
-		[NotNull]
-		public string Name { get; set; } = string.Empty;
-
-		[NotNull]
-		public string HomeWorld { get; set; } = string.Empty;
-	}
 }

@@ -11,7 +11,6 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using AcousticKitty.Common;
-using AcousticKitty.Echo;
 using SQLite;
 
 namespace AcousticKitty.Lodestone;

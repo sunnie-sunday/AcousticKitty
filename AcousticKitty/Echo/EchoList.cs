@@ -60,13 +60,13 @@ public sealed class EchoList
 			return Array.Empty<PinnedCharacter>();
 		}
 
-		List<SunnieSundayReport.PinRow> rows;
+		List<PinRow> rows;
 		try
 		{
 			var connectionString =
 				new SQLiteConnectionString(databasePath, SQLiteOpenFlags.ReadOnly, true);
 			using var connection = new SQLiteConnection(connectionString);
-			rows = connection.Table<SunnieSundayReport.PinRow>().ToList();
+			rows = connection.Table<PinRow>().ToList();
 		}
 		catch (Exception ex)
 		{
