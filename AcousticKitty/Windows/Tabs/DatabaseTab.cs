@@ -20,24 +20,21 @@ internal sealed class DatabaseTab(Plugin plugin)
 	private enum DatabaseSubTab
 	{
 		Stalkers,
-		Verified,
-		Unverified,
+		Matched,
 		Hidden,
 		Unseen,
 	}
 
 	private string nameFilter = string.Empty;
 	private int pinnedPage;
-	private int verifiedPage;
-	private int unverifiedPage;
+	private int matchedPage;
 	private int hiddenPage;
 	private int unseenPage;
 
 	private DatabaseSubTab? lastDrawnSubTab;
 
 	private readonly FilterCache<DatabaseEntryViewModel> pinnedFilterCache = new();
-	private readonly FilterCache<DatabaseEntryViewModel> verifiedFilterCache = new();
-	private readonly FilterCache<DatabaseEntryViewModel> unverifiedFilterCache = new();
+	private readonly FilterCache<DatabaseEntryViewModel> matchedFilterCache = new();
 	private readonly FilterCache<DatabaseEntryViewModel> hiddenFilterCache = new();
 	private readonly FilterCache<DatabaseEntryViewModel> unseenFilterCache = new();
 
@@ -63,31 +60,19 @@ internal sealed class DatabaseTab(Plugin plugin)
 			activeSubTab = DatabaseSubTab.Stalkers;
 			this.DrawSection(
 				overview.Pinned, this.pinnedFilterCache, ref this.pinnedPage, "DatabasePinned",
-				"Nothing pinned yet - the Echo API hasn't confirmed any character as pinned.",
+				"The bundled list has no pinned characters.",
 				statusMessage: null, overview.IsReloadingPinned);
 			ImGui.EndTabItem();
 		}
 
 		if (ImGui.BeginTabItem(
-			$"{this.TabLabel("Verified", overview.Verified.Count, DatabaseSubTab.Verified)}###DatabaseVerifiedTab"))
+			$"{this.TabLabel("Matched", overview.Matched.Count, DatabaseSubTab.Matched)}###DatabaseMatchedTab"))
 		{
-			activeSubTab = DatabaseSubTab.Verified;
+			activeSubTab = DatabaseSubTab.Matched;
 			this.DrawSection(
-				overview.Verified, this.verifiedFilterCache, ref this.verifiedPage, "DatabaseVerified",
-				"No matched character has a definitive Echo API answer yet.",
-				statusMessage: null, overview.IsReloadingVerified);
-			ImGui.EndTabItem();
-		}
-
-		if (ImGui.BeginTabItem(
-			$"{this.TabLabel("Unverified", overview.Unverified.Count, DatabaseSubTab.Unverified)}###DatabaseUnverifiedTab"))
-		{
-			activeSubTab = DatabaseSubTab.Unverified;
-			this.DrawSection(
-				overview.Unverified, this.unverifiedFilterCache, ref this.unverifiedPage,
-				"DatabaseUnverified",
+				overview.Matched, this.matchedFilterCache, ref this.matchedPage, "DatabaseMatched",
 				"No character has both Character Data and a matched Lodestone profile yet.",
-				statusMessage: null, overview.IsReloadingUnverified);
+				statusMessage: null, overview.IsReloadingMatched);
 			ImGui.EndTabItem();
 		}
 
@@ -134,11 +119,8 @@ internal sealed class DatabaseTab(Plugin plugin)
 			case DatabaseSubTab.Stalkers:
 				overview.ReloadPinnedAsync();
 				break;
-			case DatabaseSubTab.Verified:
-				overview.ReloadVerifiedAsync();
-				break;
-			case DatabaseSubTab.Unverified:
-				overview.ReloadUnverifiedAsync();
+			case DatabaseSubTab.Matched:
+				overview.ReloadMatchedAsync();
 				break;
 			case DatabaseSubTab.Hidden:
 				overview.ReloadHiddenAsync();
@@ -152,8 +134,7 @@ internal sealed class DatabaseTab(Plugin plugin)
 	private static bool IsReloadingSubTab(DatabaseOverviewService overview, DatabaseSubTab tab) => tab switch
 	{
 		DatabaseSubTab.Stalkers => overview.IsReloadingPinned,
-		DatabaseSubTab.Verified => overview.IsReloadingVerified,
-		DatabaseSubTab.Unverified => overview.IsReloadingUnverified,
+		DatabaseSubTab.Matched => overview.IsReloadingMatched,
 		DatabaseSubTab.Hidden => overview.IsReloadingHidden,
 		DatabaseSubTab.Unseen => overview.IsReloadingUnseen,
 		_ => false,
@@ -169,8 +150,7 @@ internal sealed class DatabaseTab(Plugin plugin)
 			onFilterChanged: () =>
 			{
 				this.pinnedPage = 0;
-				this.verifiedPage = 0;
-				this.unverifiedPage = 0;
+				this.matchedPage = 0;
 				this.hiddenPage = 0;
 				this.unseenPage = 0;
 			},
@@ -251,7 +231,6 @@ internal sealed class DatabaseTab(Plugin plugin)
 				entry.CharacterData,
 				entry.CharacterDataAsOfUtc,
 				entry.NameHistory,
-				entry.IsVerified,
 				entry.ProfileFetchedAtUtc,
 				showsOverride,
 				IsConflicted: entry.IsConflicted));

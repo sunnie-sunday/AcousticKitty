@@ -20,12 +20,11 @@ namespace AcousticKitty.Lodestone;
 public sealed class GroupSearchService(
 	ILodestoneClient client,
 	LodestoneCache lodestoneCache,
-	EchoStore echoStore,
+	EchoList echoList,
 	CharacterDirectory characterDirectory,
 	IDataManager dataManager,
 	IPlayerState playerState,
 	AvatarTextureCache avatarCache,
-	EchoService echo,
 	FreeCompanyIdIndex freeCompanyIdIndex,
 	IPluginLog log) : IDisposable
 {
@@ -360,12 +359,12 @@ public sealed class GroupSearchService(
 			{
 				characterDirectory.SetLookupResult(
 					unresolved.Data.ContentId, entry.CharacterId, NearbyLookupState.Found, null);
-				echo.NotifyMatchConfirmed();
 				viewModel.KnownCharacter = characterDirectory.TryGetByContentId(unresolved.Data.ContentId);
 			}
 
-			viewModel.IsVerified = echoStore.IsVerified(entry.CharacterId);
-			viewModel.IsPinned = echoStore.IsPinned(entry.CharacterId);
+			viewModel.IsPinned = echoList.IsPinnedLodestoneId(entry.CharacterId) ||
+				(viewModel.KnownCharacter is { } pinCandidate &&
+					echoList.IsPinned(pinCandidate.Data.ContentId, null));
 			viewModel.IsConflicted =
 				viewModel.KnownCharacter?.LookupState == NearbyLookupState.ConflictHold;
 
@@ -491,7 +490,6 @@ public sealed class GroupSearchService(
 		}
 
 		characterDirectory.SetLookupResult(known.Data.ContentId, member.Entry.CharacterId, state, null);
-		echo.NotifyMatchConfirmed();
 	}
 
 	#endregion

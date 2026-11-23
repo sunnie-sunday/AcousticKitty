@@ -6,9 +6,8 @@
 using System;
 using System.Collections.Generic;
 using AcousticKitty.Character;
-using AcousticKitty.Common;
-using AcousticKitty.Lodestone;
 using AcousticKitty.Echo;
+using AcousticKitty.Lodestone;
 using AcousticKitty.Windows.Views;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Colors;
@@ -21,11 +20,8 @@ internal sealed class QueuesTab(Plugin plugin)
 
 	private string lodestoneNameFilter = string.Empty;
 	private int lodestonePage;
-	private string echoNameFilter = string.Empty;
-	private int echoPage;
 
 	private readonly FilterCache<NearbyMemberViewModel> lodestoneFilterCache = new();
-	private readonly FilterCache<PendingMatch> echoFilterCache = new();
 
 	public void Draw()
 	{
@@ -35,18 +31,11 @@ internal sealed class QueuesTab(Plugin plugin)
 		}
 
 		var nearby = plugin.NearbyCharactersService;
-		var queueCountLabel =
-			nearby.QueueMightHaveMore ? $"{nearby.Queue.Count}+" : nearby.Queue.Count.ToString();
+		var queueCount = nearby.Queue.Count + plugin.ProfileRefresh.PendingCount;
+		var queueCountLabel = nearby.QueueMightHaveMore ? $"{queueCount}+" : queueCount.ToString();
 		if (ImGui.BeginTabItem($"Lodestone ({queueCountLabel})###QueuesLodestoneTab"))
 		{
 			this.DrawLodestoneQueue(nearby);
-			ImGui.EndTabItem();
-		}
-
-		var echo = plugin.EchoService;
-		if (ImGui.BeginTabItem($"Echo ({echo.PendingVerifyCount})###QueuesEchoTab"))
-		{
-			this.DrawEchoQueue(echo, echo.PendingVerifications);
 			ImGui.EndTabItem();
 		}
 
@@ -87,7 +76,21 @@ internal sealed class QueuesTab(Plugin plugin)
 			nearby.Queue, "The Lodestone search queue is empty.", this.lodestoneFilterCache,
 			ref this.lodestoneNameFilter, ref this.lodestonePage,
 			member => member.KnownCharacter.Data.Name, "LodestoneQueue", QueuesTab.DrawLodestoneRow,
-			() => QueuesTab.DrawActiveFreeCompanyRows(plugin.GroupSearchService));
+			() =>
+			{
+				QueuesTab.DrawActiveFreeCompanyRows(plugin.GroupSearchService);
+				QueuesTab.DrawProfileRefreshRows(plugin.ProfileRefresh);
+			});
+	}
+
+	private static void DrawProfileRefreshRows(ProfileRefresh profileRefresh)
+	{
+		foreach (var (pin, worldName) in profileRefresh.Pending)
+		{
+			ImGui.TextUnformatted($"{pin.Name} @ {worldName}");
+			ImGui.TextColored(ImGuiColors.DalamudGrey3, $"Lodestone ID {pin.LodestoneId}");
+			ImGui.Separator();
+		}
 	}
 
 	private static void DrawActiveFreeCompanyRows(GroupSearchService groupSearchService)
@@ -98,49 +101,6 @@ internal sealed class QueuesTab(Plugin plugin)
 			ImGui.TextColored(ImGuiColors.DalamudGrey3, $"Free Company ID: {entry.FreeCompanyId}");
 			ImGui.Separator();
 		}
-	}
-
-	private void DrawEchoQueue(
-		EchoService echo, IReadOnlyList<PendingMatch> pendingVerifications)
-	{
-		var isManual = plugin.Configuration.EchoQueueMode == EchoQueueMode.Manual;
-
-		switch (echo.State)
-		{
-			case EchoQueueState.Idle:
-				ImGui.TextColored(ImGuiColors.DalamudGrey3, "Echo: nothing to verify.");
-				break;
-			case EchoQueueState.Verifying:
-				ImGui.TextColored(ImGuiColors.SuccessForeground, "Echo: verifying...");
-				break;
-			case EchoQueueState.WaitingToRetry:
-				ImGui.TextColored(
-					ImGuiColors.ErrorForeground, echo.StatusMessage ?? "Echo: waiting to retry...");
-				break;
-			case EchoQueueState.Paused:
-				ImGui.TextColored(ImGuiColors.ErrorForeground, "Echo queue stopped.");
-				break;
-		}
-
-		ImGui.SameLine();
-
-		if (isManual)
-		{
-			RightAlignedButton.Draw(
-				echo.IsProcessing ? "Stop Echo queue" : "Start Echo queue",
-				true,
-				echo.IsProcessing ? echo.StopQueue : echo.StartQueue,
-				"QueueEchoRun");
-		}
-		else
-		{
-			RightAlignedButton.Draw("Auto Echo queue", false, echo.StartQueue, "QueueEchoRun");
-		}
-
-		this.DrawQueue(
-			pendingVerifications, "No Echo verifications are pending.", this.echoFilterCache,
-			ref this.echoNameFilter, ref this.echoPage, verify => verify.CharacterName,
-			"EchoQueue", QueuesTab.DrawEchoRow);
 	}
 
 	private void DrawQueue<T>(
@@ -177,12 +137,5 @@ internal sealed class QueuesTab(Plugin plugin)
 		var data = member.KnownCharacter.Data;
 		ImGui.TextUnformatted($"{data.Name} @ {member.WorldName}");
 		ImGui.TextColored(ImGuiColors.DalamudGrey3, $"Content ID {data.ContentId}");
-	}
-
-	private static void DrawEchoRow(PendingMatch verify)
-	{
-		var worldName = GameDataResolver.ResolveWorldName(Plugin.DataManager, verify.HomeWorldId);
-		ImGui.TextUnformatted($"{verify.CharacterName} @ {worldName}");
-		ImGui.TextColored(ImGuiColors.DalamudGrey3, $"Lodestone ID {verify.LodestoneId}");
 	}
 }

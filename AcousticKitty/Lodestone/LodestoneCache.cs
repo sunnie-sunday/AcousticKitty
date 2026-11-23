@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -32,6 +33,7 @@ public sealed partial class LodestoneCache : IDisposable
 		this.connection = new SQLiteConnection(databasePath);
 		this.connection.CreateTable<ResolvedCharacterRow>();
 		this.connection.CreateTable<CachedProfileRow>();
+		this.connection.CreateTable<PinnedProfileRow>();
 		DatabaseVacuum.RunInBackground(this.connection, this.gate, () => this.disposed);
 	}
 
@@ -326,6 +328,63 @@ public sealed partial class LodestoneCache : IDisposable
 		return result;
 	}
 
+	public IReadOnlyList<ResolvedCharacterEntry> GetResolvedForLodestoneIds(
+		IEnumerable<ulong> lodestoneIds)
+	{
+		var result = new List<ResolvedCharacterEntry>();
+		var ids = lodestoneIds.Distinct().Select(id => (long)id).ToList();
+		foreach (var chunk in ids.Chunk(BulkQueryBatchSize))
+		{
+			var chunkIds = chunk.ToList();
+			lock (this.gate)
+			{
+				if (this.disposed)
+				{
+					return result;
+				}
+
+				result.AddRange(this.connection.Table<ResolvedCharacterRow>()
+					.Where(row => chunkIds.Contains(row.LodestoneId))
+					.Select(row => new ResolvedCharacterEntry(
+						row.Key, row.Name, (uint)row.HomeWorldId, (ulong)row.LodestoneId,
+						UtcTimestamp.Parse(row.ResolvedAtUtc), row.AvatarUrlHash,
+						row.Level, row.JobId.HasValue ? (uint)row.JobId.Value : null,
+						row.FreeCompanyId.HasValue ? (ulong)row.FreeCompanyId.Value : null,
+						row.FreeCompanyName)));
+			}
+		}
+
+		return result;
+	}
+
+	public void SavePinnedProfileSnapshot(
+		ulong lodestoneId, LodestoneProfile profile, DateTime? fetchedAtUtc) =>
+		this.Write(() => this.connection.InsertOrReplace(new PinnedProfileRow
+		{
+			Key = lodestoneId.ToString(CultureInfo.InvariantCulture),
+			ProfileJson = JsonSerializer.Serialize(profile),
+			FetchedAtUtc = fetchedAtUtc.HasValue ? UtcTimestamp.Format(fetchedAtUtc.Value) : null,
+		}));
+
+	public PinnedProfileSnapshot? TryGetPinnedProfileSnapshot(ulong lodestoneId) =>
+		this.Read<PinnedProfileSnapshot?>(
+			() =>
+			{
+				var row = this.connection.Find<PinnedProfileRow>(
+					lodestoneId.ToString(CultureInfo.InvariantCulture));
+				if (row == null ||
+					JsonSerializer.Deserialize<LodestoneProfile>(row.ProfileJson) is not { } profile)
+				{
+					return null;
+				}
+
+				var fetchedAtUtc = string.IsNullOrEmpty(row.FetchedAtUtc)
+					? (DateTime?)null
+					: UtcTimestamp.Parse(row.FetchedAtUtc);
+				return new PinnedProfileSnapshot(profile, fetchedAtUtc);
+			},
+			null);
+
 	private T Read<T>(Func<T> body, T whenDisposed)
 	{
 		lock (this.gate)
@@ -394,6 +453,17 @@ public sealed partial class LodestoneCache : IDisposable
 		public string ProfileJson { get; set; } = string.Empty;
 
 		public string FetchedAtUtc { get; set; } = string.Empty;
+	}
+
+	[Table("PinnedProfiles")]
+	private sealed class PinnedProfileRow
+	{
+		[PrimaryKey]
+		public string Key { get; set; } = string.Empty;
+
+		public string ProfileJson { get; set; } = string.Empty;
+
+		public string? FetchedAtUtc { get; set; }
 	}
 
 	#endregion

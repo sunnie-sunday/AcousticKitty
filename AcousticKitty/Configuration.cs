@@ -6,9 +6,7 @@
 using System;
 using AcousticKitty.Character;
 using AcousticKitty.Common;
-using AcousticKitty.Echo;
 using Dalamud.Configuration;
-using Newtonsoft.Json;
 
 namespace AcousticKitty;
 
@@ -17,22 +15,9 @@ public sealed class Configuration : IPluginConfiguration
 {
 	public int Version { get; set; } = 1;
 
-	public ProxyMode EchoProxyMode { get; set; } = ProxyMode.Socks5;
-	public string EchoProxyHost { get; set; } = "localhost";
-	public int EchoProxyPort { get; set; } = 1080;
-	public string EchoProxyUsername { get; set; } = string.Empty;
-	public string EchoProxyEncryptedPassword { get; set; } = string.Empty;
-
-	[JsonIgnore]
-	public string EchoProxyPassword
-	{
-		get => DpapiProtector.Unprotect(this.EchoProxyEncryptedPassword);
-		set => this.EchoProxyEncryptedPassword = DpapiProtector.Protect(value);
-	}
-
 	public NearbySearchMode NearbySearchMode { get; set; } = NearbySearchMode.Manual;
-	public EchoQueueMode EchoQueueMode { get; set; } = EchoQueueMode.Manual;
 	public DatabaseCacheTier DatabaseCacheTier { get; set; } = DatabaseCacheTier.Medium;
+	public string? PinnedProfilesRefreshedFor { get; set; }
 
 	public void Save()
 	{

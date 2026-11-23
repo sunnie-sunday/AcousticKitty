@@ -42,15 +42,14 @@ public sealed class Plugin : IDalamudPlugin
 	public readonly WindowSystem WindowSystem = new("AcousticKitty");
 
 	internal LodestoneClient LodestoneClient { get; }
-	internal IEchoClientFactory EchoClientFactory { get; }
-	internal EchoService EchoService { get; }
 	internal AvatarTextureCache AvatarTextureCache { get; }
 	internal GroupSearchService GroupSearchService { get; }
 	internal NearbyCharactersService NearbyCharactersService { get; }
 	internal DatabaseOverviewService DatabaseOverviewService { get; }
+	internal ProfileRefresh ProfileRefresh { get; }
 
 	private readonly LodestoneCache lodestoneCache;
-	private readonly EchoStore echoStore;
+	private readonly EchoList echoList;
 	private readonly CharacterDirectory characterDirectory;
 	private readonly FreeCompanyIdIndex freeCompanyIdIndex;
 	private readonly AvatarWorldHistoryService avatarWorldHistoryService;
@@ -65,39 +64,35 @@ public sealed class Plugin : IDalamudPlugin
 		this.Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 
 		this.LodestoneClient = new LodestoneClient(Log);
+		this.echoList =
+			new EchoList(PluginInterface.AssemblyLocation.DirectoryName!, DataManager, Log);
 		this.lodestoneCache = new LodestoneCache(PluginInterface.ConfigDirectory.FullName);
-		this.echoStore = new EchoStore(PluginInterface.ConfigDirectory.FullName, Log);
 		this.characterDirectory =
 			new CharacterDirectory(PluginInterface.ConfigDirectory.FullName, Log);
 
 		UpdateMigrations.Run(
-			this.Configuration, this.echoStore, this.lodestoneCache, this.characterDirectory, Log);
+			this.Configuration, PluginInterface.ConfigDirectory.FullName, this.characterDirectory, Log);
 
 		this.freeCompanyIdIndex = new FreeCompanyIdIndex(this.characterDirectory, this.lodestoneCache);
 		this.avatarWorldHistoryService = new AvatarWorldHistoryService(
 			this.LodestoneClient, this.characterDirectory, DataManager, Log);
-		this.EchoClientFactory = new EchoClientFactory(this.Configuration, Log);
-		this.EchoService = new EchoService(
-			Framework,
-			this.EchoClientFactory,
-			this.echoStore,
-			this.characterDirectory,
+		this.ProfileRefresh = new ProfileRefresh(
+			this.LodestoneClient,
 			this.lodestoneCache,
-			this.avatarWorldHistoryService,
-			DataManager,
+			this.echoList,
 			this.Configuration,
-			Log,
-			PluginInterface.ConfigDirectory.FullName);
+			PluginInterface.Manifest.AssemblyVersion.ToString(),
+			DataManager,
+			Log);
 		this.AvatarTextureCache = new AvatarTextureCache(this.LodestoneClient, TextureProvider);
 		this.GroupSearchService = new GroupSearchService(
 			this.LodestoneClient,
 			this.lodestoneCache,
-			this.echoStore,
+			this.echoList,
 			this.characterDirectory,
 			DataManager,
 			PlayerState,
 			this.AvatarTextureCache,
-			this.EchoService,
 			this.freeCompanyIdIndex,
 			Log);
 		this.NearbyCharactersService = new NearbyCharactersService(
@@ -108,16 +103,17 @@ public sealed class Plugin : IDalamudPlugin
 			DataManager,
 			this.LodestoneClient,
 			this.lodestoneCache,
-			this.echoStore,
+			this.echoList,
 			this.characterDirectory,
 			this.Configuration,
-			this.EchoService,
+			this.avatarWorldHistoryService,
 			this.GroupSearchService,
 			this.freeCompanyIdIndex,
+			this.ProfileRefresh,
 			Log);
 		this.DatabaseOverviewService = new DatabaseOverviewService(
-			this.lodestoneCache, this.echoStore, this.characterDirectory, DataManager, PlayerState,
-			this.GroupSearchService, this.freeCompanyIdIndex, this.Configuration, this.EchoService, Log);
+			this.lodestoneCache, this.echoList, this.characterDirectory, DataManager, PlayerState,
+			this.GroupSearchService, this.freeCompanyIdIndex, this.Configuration, Log);
 
 		this.mainWindow = new MainWindow(this);
 
@@ -146,9 +142,7 @@ public sealed class Plugin : IDalamudPlugin
 		this.NearbyCharactersService.Dispose();
 		this.GroupSearchService.Dispose();
 		this.AvatarTextureCache.Dispose();
-		this.EchoService.Dispose();
 		this.LodestoneClient.Dispose();
-		this.echoStore.Dispose();
 		this.lodestoneCache.Dispose();
 		this.characterDirectory.Dispose();
 

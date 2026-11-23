@@ -3,50 +3,46 @@
 // SPDX-FileType: SOURCE
 // SPDX-FileContributor: Contributions by /xivg/
 
-using System;
-using AcousticKitty.Lodestone;
+using SQLite;
 
 namespace AcousticKitty.Echo;
 
-public enum ProxyMode
-{
-	Direct,
-	Socks5,
-}
-
-public enum EchoSaveOutcome
-{
-	Saved,
-	AlreadyPinned,
-}
-
-public enum EchoQueueMode
-{
-	Auto,
-	Manual,
-}
-
-public sealed record PendingMatch(
-	ulong ContentId, string CharacterName, uint HomeWorldId, ulong LodestoneId);
-
 public sealed record PinnedCharacter(
+	ulong? ContentId,
 	ulong LodestoneId,
+	string NameWorldKey,
 	string Name,
 	uint HomeWorldId,
-	LodestoneProfile? Profile,
-	DateTime? FetchedAtUtc,
-	DateTime PinnedAtUtc);
+	string AvatarUrlHash,
+	uint? JobId,
+	int Level,
+	ulong? FreeCompanyId,
+	string? FreeCompanyName);
 
-public sealed record PinnedProfileSnapshot(LodestoneProfile Profile, DateTime? FetchedAtUtc);
-
-public sealed record EchoRegistration(string UploaderId, string ApiKey, string HmacSecretBase64);
-
-public sealed record EchoSession(string Token, DateTime ExpiresAtUtc, string Tier);
-
-public sealed class EchoRateLimitedException(TimeSpan? retryAfter)
-	: Exception("The Echo API returned 429 (rate limited).")
+[Table("Pins")]
+internal sealed class PinRow
 {
-	public TimeSpan? RetryAfter { get; } = retryAfter;
-}
+	[PrimaryKey]
+	public long LodestoneId { get; set; }
 
-public sealed class EchoException(string message) : Exception(message);
+	[Indexed]
+	public long? ContentId { get; set; }
+
+	[NotNull]
+	public string Name { get; set; } = string.Empty;
+
+	[NotNull]
+	public string HomeWorld { get; set; } = string.Empty;
+
+	[NotNull]
+	public string AvatarUrlHash { get; set; } = string.Empty;
+
+	[NotNull]
+	public string Job { get; set; } = string.Empty;
+
+	public int Level { get; set; }
+
+	public long? FreeCompanyId { get; set; }
+
+	public string? FreeCompanyName { get; set; }
+}

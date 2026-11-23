@@ -1,8 +1,8 @@
 {
 	"$schema": "https://json-schema.org/draft/2020-12/schema",
-	"$id": "https://raw.githubusercontent.com/sunnie-sunday/NekoScan/refs/heads/main/schemas/pcs.schema.json",
-	"title": "NekoScan PCs",
-	"description": "Snapshots of nearby PlayerCharacter objects from the NekoScan v2 plugin.",
+	"$id": "https://raw.githubusercontent.com/sunnie-sunday/SunnieScan/refs/heads/main/schemas/pcs.schema.json",
+	"title": "SunnieScan PCs",
+	"description": "Snapshots of nearby PlayerCharacter objects from the SunnieScan v3 plugin.",
 	"type": "array",
 	"items": {
 		"$ref": "#/$defs/PlayerCharacter"
@@ -20,7 +20,7 @@
 				"JobId",
 				"Level",
 				"FCTag",
-				"Gender",
+				"Customize",
 				"TimeSeenUtc",
 				"TitleId"
 			],
@@ -40,12 +40,12 @@
 				"HomeWorldId": {
 					"type": "integer",
 					"minimum": 1,
-					"description": "The World ID of the character's Home World."
+					"description": "The world ID of the character's home world."
 				},
 				"CurrentWorldId": {
 					"type": "integer",
 					"minimum": 1,
-					"description": "The World ID where the character was seen - may differ from HomeWorldId (e.g. World Visit)."
+					"description": "The world ID where the character was seen - may differ from HomeWorldId (visitor)."
 				},
 				"TerritoryId": {
 					"type": "integer",
@@ -67,10 +67,9 @@
 					"type": "string",
 					"description": "The character's Free Company tag, without the surrounding « » guillemets. Empty string when none or unknown."
 				},
-				"Gender": {
+				"Customize": {
 					"type": "string",
-					"enum": ["M", "F"],
-					"description": "Read from the native customize data's Sex byte: 0 maps to \"M\", anything else to \"F\"."
+					"description": "The character's native customize data (appearance) as a base64 string."
 				},
 				"TimeSeenUtc": {
 					"type": "string",

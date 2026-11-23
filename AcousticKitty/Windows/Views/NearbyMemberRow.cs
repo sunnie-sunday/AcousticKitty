@@ -56,7 +56,6 @@ internal static class NearbyMemberRow
 				data,
 				member.KnownCharacter.LastSeenUtc,
 				new Lazy<IReadOnlyList<NameHistoryEntry>>(() => nearby.GetNameHistory(data.ContentId)),
-				member.IsVerified,
 				member.ProfileAsOfUtc,
 				showsOverride,
 				IsConflicted: member.IsConflicted));

@@ -21,8 +21,6 @@ public enum DatabaseCacheTier
 
 internal static class DatabaseCapEnforcer
 {
-	public const int UnverifiedCap = 5_000;
-
 	public static int ResolveCap(DatabaseCacheTier tier) => tier switch
 	{
 		DatabaseCacheTier.Small => 12_500,
@@ -33,35 +31,24 @@ internal static class DatabaseCapEnforcer
 
 	private static int EnforcementCeiling(int cap) => cap + (cap / 10);
 
-	public static IReadOnlyList<KnownCharacter> GetUnverifiedCandidates(
-		CharacterDirectory characterDirectory, EchoStore echoStore) =>
-		GetUnverifiedCandidates(characterDirectory, echoStore.GetAllVerifiedLodestoneIds());
-
-	public static IReadOnlyList<KnownCharacter> GetUnverifiedCandidates(
-		CharacterDirectory characterDirectory, IReadOnlySet<ulong> verifiedIds) =>
-		characterDirectory.GetFoundOrAccessRestricted()
-			.Where(known => known.LodestoneId != null && !verifiedIds.Contains(known.LodestoneId.Value))
-			.ToArray();
-
-	public static void EnforceUnverified(
-		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, EchoStore echoStore,
-		ulong? currentlyVerifyingContentId)
+	public static void EnforceMatched(
+		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, EchoList echoList,
+		int cap)
 	{
-		var verifiedIds = echoStore.GetAllVerifiedLodestoneIds();
-		var pinnedIds = echoStore.GetAllPinnedLodestoneIds(verifiedIds);
-		var candidates = DatabaseCapEnforcer.GetUnverifiedCandidates(characterDirectory, verifiedIds)
+		if (characterDirectory.CountFoundOrAccessRestricted() <= EnforcementCeiling(cap))
+		{
+			return;
+		}
+
+		var candidates = DatabaseCapEnforcer.GetMatchedCandidates(characterDirectory, echoList)
 			.Select(known => (
 				known.Data.ContentId,
-				LodestoneId: known.LodestoneId!.Value,
 				CacheKey: CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId),
 				known.LastSeenUtc))
 			.ToList();
 
 		OldestFirstEviction.Trim(
-			candidates, UnverifiedCap,
-			item => !pinnedIds.Contains(item.LodestoneId) &&
-				item.ContentId != currentlyVerifyingContentId,
-			item => item.LastSeenUtc,
+			candidates, cap, _ => true, item => item.LastSeenUtc,
 			items =>
 			{
 				characterDirectory.DeleteMany(items.Select(item => item.ContentId));
@@ -69,21 +56,37 @@ internal static class DatabaseCapEnforcer
 			});
 	}
 
-	public static void EnforceHidden(CharacterDirectory characterDirectory, int cap)
+	public static IReadOnlyList<KnownCharacter> GetMatchedCandidates(
+		CharacterDirectory characterDirectory, EchoList echoList) =>
+		characterDirectory.GetFoundOrAccessRestricted()
+			.Where(known =>
+				known.LodestoneId != null && !echoList.IsPinned(known.Data.ContentId, known.LodestoneId))
+			.ToArray();
+
+	public static void EnforceHidden(
+		CharacterDirectory characterDirectory, EchoList echoList, int cap)
 	{
 		if (characterDirectory.CountHidden() <= EnforcementCeiling(cap))
 		{
 			return;
 		}
 
-		var candidates = characterDirectory.GetHidden().ToList();
+		var candidates =
+			DatabaseCapEnforcer.GetHiddenCandidates(characterDirectory, echoList).ToList();
 		OldestFirstEviction.Trim(
 			candidates, cap, _ => true, known => known.LastSeenUtc,
 			items => characterDirectory.DeleteMany(items.Select(known => known.Data.ContentId)));
 	}
 
+	public static IReadOnlyList<KnownCharacter> GetHiddenCandidates(
+		CharacterDirectory characterDirectory, EchoList echoList) =>
+		characterDirectory.GetHidden()
+			.Where(known => !echoList.IsPinned(known.Data.ContentId, known.LodestoneId))
+			.ToArray();
+
 	public static void EnforceUnseen(
-		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, int cap)
+		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, EchoList echoList,
+		int cap)
 	{
 		if (lodestoneCache.CountResolved() - characterDirectory.CountFoundOrAccessRestricted()
 			<= EnforcementCeiling(cap))
@@ -98,6 +101,7 @@ internal static class DatabaseCapEnforcer
 			.Enumerate(
 				lodestoneCache.GetAllCachedProfiles(), resolvedByKey, seenNameWorldKeys,
 				ownNameWorldKey: null)
+			.Where(row => !DatabaseCapEnforcer.IsPinnedUnseen(row, echoList))
 			.Select(row => (row.Key, row.Timestamp))
 			.ToList();
 
@@ -106,34 +110,8 @@ internal static class DatabaseCapEnforcer
 			items => lodestoneCache.DeleteCharacters(items.Select(item => item.Key)));
 	}
 
-	public static void EnforceVerified(
-		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, EchoStore echoStore,
-		int cap)
-	{
-		if (echoStore.CountVerified() <= EnforcementCeiling(cap))
-		{
-			return;
-		}
-
-		var verifiedIds = echoStore.GetAllVerifiedLodestoneIds();
-		var pinnedIds = echoStore.GetAllPinnedLodestoneIds(verifiedIds);
-
-		var candidates = characterDirectory.GetFoundOrAccessRestricted()
-			.Where(known => known.LodestoneId != null && verifiedIds.Contains(known.LodestoneId.Value))
-			.Select(known => (
-				known.Data.ContentId,
-				LodestoneId: known.LodestoneId!.Value,
-				CacheKey: CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId),
-				known.LastSeenUtc))
-			.ToList();
-
-		OldestFirstEviction.Trim(
-			candidates, cap, item => !pinnedIds.Contains(item.LodestoneId), item => item.LastSeenUtc,
-			items =>
-			{
-				characterDirectory.DeleteMany(items.Select(item => item.ContentId));
-				lodestoneCache.DeleteCharacters(items.Select(item => item.CacheKey));
-				echoStore.DeleteVerified(items.Select(item => item.LodestoneId));
-			});
-	}
+	public static bool IsPinnedUnseen(UnseenRow row, EchoList echoList) =>
+		row.Resolved is { } resolved
+			? echoList.IsPinnedLodestoneId(resolved.LodestoneId)
+			: echoList.IsPinnedNameWorldKey(row.Key);
 }

@@ -2,46 +2,40 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
 	<PropertyGroup>
 		<Version>0.2.3.0</Version>
+		<ReportVersion>v2026.11.08</ReportVersion>
 		<!-- Manifest fields -->
 		<Author>Sunnie Sunday</Author>
 		<Name>Acoustic Kitty</Name>
 		<Punchline>Counterintelligence plugin.</Punchline>
-		<Description>Cross-references nearby in-game characters against their Lodestone profile, and builds an audit queue against EchoVault's registration to see if they're already verified sightings contributors. Echo's API used to find stalkers can optionally be routed through a SOCKS5 proxy.</Description>
+		<Description>Cross-references nearby in-game characters against their Lodestone profile, and flags known EchoVault sightings contributors (stalkers) from a list bundled with the plugin. Only The Lodestone is ever contacted.</Description>
 		<RepoUrl>https://github.com/sunnie-sunday/AcousticKitty</RepoUrl>
 		<Tags>Lodestone;Character;Profile</Tags>
-		<!-- Only used for a real (non-dev) install. -->
+		<!-- Only used for a real (non-dev) install -->
 		<IconUrl>https://raw.githubusercontent.com/sunnie-sunday/AcousticKitty/main/images/icon.png</IconUrl>
 		<!-- The game (and Dalamud itself) is always a Windows x64 binary, even when run under Wine/Proton on Linux -->
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<SelfContained>false</SelfContained>
 		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+		<ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+		<RepositoryUrl>$(RepoUrl)</RepositoryUrl>
 	</PropertyGroup>
 
 	<ItemGroup>
 		<PackageReference Include="HtmlAgilityPack" Version="1.13.0" />
 		<PackageReference Include="sqlite-net-pcl" Version="1.11.285" />
 		<PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
-		<PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
 		<PackageReference Include="JsonSchema.Net" Version="9.4.0" />
 	</ItemGroup>
 
 	<ItemGroup>
-		<!-- icon.png (native 64x64, matching the exact size Dalamud's plugin installer renders it at)
-		For a locally-loaded dev plugin, Dalamud looks for a local file at exactly this path next to the DLL. -->
-		<Content Include="..\images\icon.png" Link="images\icon.png">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<!-- logo.png (native 96x96, matching our own in-window sidebar so it renders without scaling. -->
-		<Content Include="..\images\logo.png" Link="images\logo.png">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<!-- NekoScan's PCs JSON Schema file, included at the root next to the DLL. -->
-		<Content Include="..\schemas\pcs.schema.json" Link="pcs.schema.json">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<!-- Sunnie Sunday Report log frontmatter schema, included at the root next to the DLL. -->
-		<Content Include="..\schemas\log.schema.json" Link="log.schema.json">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
+		<!-- icon.png (native 64x64, the size Dalamud's plugin installer renders it at) -->
+		<Content Include="..\images\icon.png" Link="images\icon.png" CopyToOutputDirectory="PreserveNewest" />
+		<!-- logo.png (native 96x96, the size of our in-window sidebar, so it renders without scaling) -->
+		<Content Include="..\images\logo.png" Link="images\logo.png" CopyToOutputDirectory="PreserveNewest" />
+		<!-- SunnieScan's pcs.json schema, at the root next to the DLL -->
+		<Content Include="..\schemas\pcs.schema.json" Link="pcs.schema.json" CopyToOutputDirectory="PreserveNewest" />
 	</ItemGroup>
+
+	<!-- Generates and bundles stalkers.db3 from the report submodule at <ReportVersion> -->
+	<Import Project="..\SunnieSundayReport\SunnieSundayReport.targets" />
 </Project>

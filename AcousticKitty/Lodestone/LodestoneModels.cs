@@ -81,6 +81,8 @@ public sealed record ResolvedCharacterEntry(
 	ulong? FreeCompanyId = null,
 	string? FreeCompanyName = null);
 
+public sealed record PinnedProfileSnapshot(LodestoneProfile Profile, DateTime? FetchedAtUtc);
+
 public sealed record MemberListEntry(
 	ulong CharacterId,
 	string Name,

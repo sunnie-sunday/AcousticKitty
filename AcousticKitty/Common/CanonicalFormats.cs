@@ -5,12 +5,57 @@
 
 using System;
 using System.Globalization;
+using System.Runtime.CompilerServices;
+using Dalamud.Game.ClientState.Objects.Enums;
+using NativeCustomizeData = FFXIVClientStructs.FFXIV.Client.Game.Character.CustomizeData;
 
 namespace AcousticKitty.Common;
 
 internal static class CharacterKey
 {
 	public static string Build(string name, uint homeWorldId) => $"{name}@{homeWorldId}";
+}
+
+internal static class CustomizeEncoding
+{
+	public static string Encode(byte[] customize) => Convert.ToBase64String(customize);
+
+	public static string? EncodeBlankWithGender(string? gender)
+	{
+		if (gender is not ("M" or "F"))
+		{
+			return null;
+		}
+
+		var bytes = new byte[Unsafe.SizeOf<NativeCustomizeData>()];
+		bytes[(int)CustomizeIndex.Gender] = gender == "F" ? (byte)1 : (byte)0;
+		return CustomizeEncoding.Encode(bytes);
+	}
+
+	public static string DecodeGender(string? customizeBase64)
+	{
+		if (string.IsNullOrEmpty(customizeBase64))
+		{
+			return string.Empty;
+		}
+
+		byte[] bytes;
+		try
+		{
+			bytes = Convert.FromBase64String(customizeBase64);
+		}
+		catch (FormatException)
+		{
+			return string.Empty;
+		}
+
+		if (bytes.Length <= (int)CustomizeIndex.Gender)
+		{
+			return string.Empty;
+		}
+
+		return bytes[(int)CustomizeIndex.Gender] == 0 ? "M" : "F";
+	}
 }
 
 internal static class UtcTimestamp

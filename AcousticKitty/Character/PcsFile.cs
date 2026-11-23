@@ -107,7 +107,7 @@ internal static class PcsFile
 			row.TitleId,
 			row.TerritoryId,
 			row.CurrentWorldId,
-			row.Gender),
+			string.IsNullOrEmpty(row.Customize) ? null : row.Customize),
 		row.TimeSeenUtc.UtcDateTime);
 
 	private sealed record RawRow(
@@ -119,7 +119,7 @@ internal static class PcsFile
 		uint JobId,
 		int Level,
 		string FCTag,
-		string Gender,
+		string? Customize,
 		DateTimeOffset TimeSeenUtc,
 		uint TitleId);
 }

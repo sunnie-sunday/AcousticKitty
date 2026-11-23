@@ -17,21 +17,18 @@ namespace AcousticKitty.Common;
 
 public sealed class DatabaseOverviewService(
 	LodestoneCache lodestoneCache,
-	EchoStore echoStore,
+	EchoList echoList,
 	CharacterDirectory characterDirectory,
 	IDataManager dataManager,
 	IPlayerState playerState,
 	GroupSearchService groupSearchService,
 	FreeCompanyIdIndex freeCompanyIdIndex,
 	Configuration configuration,
-	EchoService echoService,
 	IPluginLog log)
 {
 	private volatile IReadOnlyList<DatabaseEntryViewModel> pinned =
 		Array.Empty<DatabaseEntryViewModel>();
-	private volatile IReadOnlyList<DatabaseEntryViewModel> verified =
-		Array.Empty<DatabaseEntryViewModel>();
-	private volatile IReadOnlyList<DatabaseEntryViewModel> unverified =
+	private volatile IReadOnlyList<DatabaseEntryViewModel> matched =
 		Array.Empty<DatabaseEntryViewModel>();
 	private volatile IReadOnlyList<DatabaseEntryViewModel> hidden =
 		Array.Empty<DatabaseEntryViewModel>();
@@ -39,16 +36,13 @@ public sealed class DatabaseOverviewService(
 		Array.Empty<DatabaseEntryViewModel>();
 
 	private volatile bool isReloadingPinned;
-	private volatile bool isReloadingVerified;
-	private volatile bool isReloadingUnverified;
+	private volatile bool isReloadingMatched;
 	private volatile bool isReloadingHidden;
 	private volatile bool isReloadingUnseen;
 
 	public IReadOnlyList<DatabaseEntryViewModel> Pinned => this.pinned;
 
-	public IReadOnlyList<DatabaseEntryViewModel> Verified => this.verified;
-
-	public IReadOnlyList<DatabaseEntryViewModel> Unverified => this.unverified;
+	public IReadOnlyList<DatabaseEntryViewModel> Matched => this.matched;
 
 	public IReadOnlyList<DatabaseEntryViewModel> Hidden => this.hidden;
 
@@ -56,9 +50,7 @@ public sealed class DatabaseOverviewService(
 
 	public bool IsReloadingPinned => this.isReloadingPinned;
 
-	public bool IsReloadingVerified => this.isReloadingVerified;
-
-	public bool IsReloadingUnverified => this.isReloadingUnverified;
+	public bool IsReloadingMatched => this.isReloadingMatched;
 
 	public bool IsReloadingHidden => this.isReloadingHidden;
 
@@ -68,15 +60,10 @@ public sealed class DatabaseOverviewService(
 		this.RunAsync(
 			"Stalkers", () => this.isReloadingPinned, v => this.isReloadingPinned = v, this.ReloadPinnedCore);
 
-	public void ReloadVerifiedAsync() =>
+	public void ReloadMatchedAsync() =>
 		this.RunAsync(
-			"Verified", () => this.isReloadingVerified, v => this.isReloadingVerified = v,
-			this.ReloadVerifiedCore);
-
-	public void ReloadUnverifiedAsync() =>
-		this.RunAsync(
-			"Unverified", () => this.isReloadingUnverified, v => this.isReloadingUnverified = v,
-			this.ReloadUnverifiedCore);
+			"Matched", () => this.isReloadingMatched, v => this.isReloadingMatched = v,
+			this.ReloadMatchedCore);
 
 	public void ReloadHiddenAsync() =>
 		this.RunAsync(
@@ -115,21 +102,28 @@ public sealed class DatabaseOverviewService(
 	private void ReloadPinnedCore()
 	{
 		var stopwatch = Stopwatch.StartNew();
-		var pinnedCharacters = echoStore.GetAllPinned();
+		var pins = echoList.All
+			.Select(pin => (Pin: pin, Known:
+				(pin.ContentId is { } contentId ? characterDirectory.TryGetByContentId(contentId) : null)
+				?? characterDirectory.TryGetByLodestoneId(pin.LodestoneId)))
+			.ToList();
 
-		var knownByLodestoneId = new Dictionary<ulong, KnownCharacter?>();
-		foreach (var pin in pinnedCharacters)
-		{
-			if (!knownByLodestoneId.ContainsKey(pin.LodestoneId))
-			{
-				knownByLodestoneId[pin.LodestoneId] =
-					characterDirectory.TryGetByLodestoneId(pin.LodestoneId);
-			}
-		}
-
-		var nameWorldKeys = knownByLodestoneId.Values
-			.Where(known => known is { LookupState: not NearbyLookupState.Transferred })
-			.Select(known => CharacterKey.Build(known!.Data.Name, known.Data.HomeWorldId))
+		var resolvedKeyByLodestoneId = lodestoneCache
+			.GetResolvedForLodestoneIds(
+				pins.Where(row => row.Known == null).Select(row => row.Pin.LodestoneId))
+			.GroupBy(resolved => resolved.LodestoneId)
+			.ToDictionary(
+				group => group.Key, group => group.MaxBy(resolved => resolved.ResolvedAtUtc)!.Key);
+		var cacheKeys = pins
+			.Select(row => row.Known is { } known
+				? CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId)
+				: resolvedKeyByLodestoneId.GetValueOrDefault(row.Pin.LodestoneId) ??
+					row.Pin.NameWorldKey)
+			.ToList();
+		var nameWorldKeys = pins
+			.Zip(cacheKeys)
+			.Where(pair => pair.First.Known is not { LookupState: NearbyLookupState.Transferred })
+			.Select(pair => pair.Second)
 			.Distinct()
 			.ToList();
 		var cachedProfilesByKey =
@@ -137,15 +131,19 @@ public sealed class DatabaseOverviewService(
 		var resolvedByKey =
 			lodestoneCache.GetResolvedForKeys(nameWorldKeys).ToDictionary(resolved => resolved.Key);
 
-		var pinnedList = pinnedCharacters
-			.OrderByDescending(pin => pin.PinnedAtUtc)
-			.Select(pin =>
+		var pinnedList = pins
+			.Zip(cacheKeys, (row, cacheKey) => (row.Pin, row.Known, CacheKey: cacheKey))
+			.OrderByDescending(row => row.Known?.LastSeenUtc ?? DateTime.MinValue)
+			.ThenBy(row => row.Known?.Data.Name ?? row.Pin.Name, StringComparer.OrdinalIgnoreCase)
+			.Select(row =>
 			{
-				var known = knownByLodestoneId[pin.LodestoneId];
-				var name = known?.Data.Name ?? pin.Name;
-				var homeWorldId = known?.Data.HomeWorldId ?? pin.HomeWorldId;
-				var cacheKey = CharacterKey.Build(name, homeWorldId);
+				var (pin, known, cacheKey) = row;
 				var isTransferred = known is { LookupState: NearbyLookupState.Transferred };
+				var cached = isTransferred ? null : cachedProfilesByKey.GetValueOrDefault(cacheKey);
+				var resolved = isTransferred ? null : resolvedByKey.GetValueOrDefault(cacheKey);
+				var name = known?.Data.Name ?? resolved?.Name ?? pin.Name;
+				var homeWorldId =
+					known?.Data.HomeWorldId ?? resolved?.HomeWorldId ?? pin.HomeWorldId;
 				var worldName = GameDataResolver.ResolveWorldName(dataManager, homeWorldId);
 				var dataCenterName = GameDataResolver.ResolveDataCenterName(dataManager, homeWorldId);
 				var nameHistory = known != null
@@ -157,15 +155,20 @@ public sealed class DatabaseOverviewService(
 				string? avatarUrlHash;
 				if (isTransferred)
 				{
-					var snapshot = echoStore.TryGetPinnedProfileSnapshot(pin.LodestoneId);
+					var snapshot = lodestoneCache.TryGetPinnedProfileSnapshot(pin.LodestoneId);
 					profile = snapshot is { } s ? new Lazy<LodestoneProfile>(() => s.Profile) : null;
 					profileFetchedAtUtc = snapshot?.FetchedAtUtc;
 					avatarUrlHash = snapshot?.Profile.AvatarUrlHash;
 				}
+				else if (known == null && cached == null && resolved == null)
+				{
+					var partial = DatabaseOverviewService.BuildReportProfile(pin);
+					profile = new Lazy<LodestoneProfile>(() => partial);
+					profileFetchedAtUtc = null;
+					avatarUrlHash = pin.AvatarUrlHash;
+				}
 				else
 				{
-					var cached = cachedProfilesByKey.GetValueOrDefault(cacheKey);
-					var resolved = resolvedByKey.GetValueOrDefault(cacheKey);
 					(profile, profileFetchedAtUtc) = LodestoneProfile.ResolveOrPartial(cached, resolved);
 					avatarUrlHash = resolved?.AvatarUrlHash;
 				}
@@ -181,42 +184,14 @@ public sealed class DatabaseOverviewService(
 			$"Reloaded Database Pinned tab: {this.pinned.Count} in {stopwatch.ElapsedMilliseconds} ms.");
 	}
 
-	private void ReloadVerifiedCore()
+	private void ReloadMatchedCore()
 	{
 		var stopwatch = Stopwatch.StartNew();
-		DatabaseCapEnforcer.EnforceVerified(
-			characterDirectory, lodestoneCache, echoStore,
+		DatabaseCapEnforcer.EnforceMatched(
+			characterDirectory, lodestoneCache, echoList,
 			DatabaseCapEnforcer.ResolveCap(configuration.DatabaseCacheTier));
-		this.verified = this.BuildVerifiedOrUnverifiedList(wantVerified: true);
-		log.Verbose(
-			$"Reloaded Database Verified tab: {this.verified.Count} in {stopwatch.ElapsedMilliseconds} ms.");
-	}
 
-	private void ReloadUnverifiedCore()
-	{
-		var stopwatch = Stopwatch.StartNew();
-		DatabaseCapEnforcer.EnforceUnverified(
-			characterDirectory, lodestoneCache, echoStore, echoService.CurrentlyVerifyingContentId);
-		this.unverified = this.BuildVerifiedOrUnverifiedList(wantVerified: false);
-		log.Verbose(
-			$"Reloaded Database Unverified tab: {this.unverified.Count} in " +
-			$"{stopwatch.ElapsedMilliseconds} ms.");
-	}
-
-	private IReadOnlyList<DatabaseEntryViewModel> BuildVerifiedOrUnverifiedList(bool wantVerified)
-	{
-		var verifiedAtByLodestoneId = echoStore.GetAllVerified();
-		var pinnedIds = echoStore.GetAllPinnedLodestoneIds(verifiedAtByLodestoneId.Keys.ToHashSet());
-
-		var candidates = characterDirectory.GetFoundOrAccessRestricted()
-			.Where(known =>
-			{
-				var isVerified = known.LodestoneId is { } id && verifiedAtByLodestoneId.ContainsKey(id);
-				var isPinned = known.LodestoneId is { } pinId && pinnedIds.Contains(pinId);
-				return wantVerified ? isVerified && !isPinned : !isVerified;
-			})
-			.ToList();
-
+		var candidates = DatabaseCapEnforcer.GetMatchedCandidates(characterDirectory, echoList);
 		var cacheKeys = candidates
 			.Select(known => CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId))
 			.ToList();
@@ -225,39 +200,37 @@ public sealed class DatabaseOverviewService(
 		var resolvedByKey =
 			lodestoneCache.GetResolvedForKeys(cacheKeys).ToDictionary(resolved => resolved.Key);
 
-		var entries = candidates.Select(known =>
-		{
-			var cacheKey = CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId);
-			var worldName = GameDataResolver.ResolveWorldName(dataManager, known.Data.HomeWorldId);
-			var dataCenterName =
-				GameDataResolver.ResolveDataCenterName(dataManager, known.Data.HomeWorldId);
-			cachedProfilesByKey.TryGetValue(cacheKey, out var cached);
-			resolvedByKey.TryGetValue(cacheKey, out var resolved);
-			var isPinned = known.LodestoneId is { } pinId && pinnedIds.Contains(pinId);
-			var sortKey = wantVerified && known.LodestoneId is { } sortId
-				? verifiedAtByLodestoneId.GetValueOrDefault(sortId)
-				: known.LastSeenUtc;
+		this.matched = candidates
+			.OrderByDescending(known => known.LastSeenUtc)
+			.Select(known =>
+			{
+				var cacheKey = CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId);
+				var worldName = GameDataResolver.ResolveWorldName(dataManager, known.Data.HomeWorldId);
+				var dataCenterName =
+					GameDataResolver.ResolveDataCenterName(dataManager, known.Data.HomeWorldId);
+				cachedProfilesByKey.TryGetValue(cacheKey, out var cached);
+				resolvedByKey.TryGetValue(cacheKey, out var resolved);
 
-			var (profile, profileFetchedAtUtc) = LodestoneProfile.ResolveOrPartial(cached, resolved);
-			return (Entry: new DatabaseEntryViewModel(
-				cacheKey, known.Data.Name, worldName, isPinned,
-				profile, profileFetchedAtUtc, known.Data, known.LastSeenUtc,
-				resolved?.AvatarUrlHash, dataCenterName,
-				NameHistory: DatabaseOverviewService.LazyNameHistory(
-					characterDirectory, known.Data.ContentId),
-				IsVerified: wantVerified), SortKey: sortKey);
-		});
-
-		return entries.OrderByDescending(entry => entry.SortKey).Select(entry => entry.Entry).ToArray();
+				var (profile, profileFetchedAtUtc) = LodestoneProfile.ResolveOrPartial(cached, resolved);
+				return new DatabaseEntryViewModel(
+					cacheKey, known.Data.Name, worldName, false,
+					profile, profileFetchedAtUtc, known.Data, known.LastSeenUtc,
+					resolved?.AvatarUrlHash, dataCenterName,
+					NameHistory: DatabaseOverviewService.LazyNameHistory(
+						characterDirectory, known.Data.ContentId));
+			}).ToArray();
+		log.Verbose(
+			$"Reloaded Database Matched tab: {this.matched.Count} in {stopwatch.ElapsedMilliseconds} ms.");
 	}
 
 	private void ReloadHiddenCore()
 	{
 		var stopwatch = Stopwatch.StartNew();
 		DatabaseCapEnforcer.EnforceHidden(
-			characterDirectory, DatabaseCapEnforcer.ResolveCap(configuration.DatabaseCacheTier));
+			characterDirectory, echoList,
+			DatabaseCapEnforcer.ResolveCap(configuration.DatabaseCacheTier));
 
-		var hiddenKnown = characterDirectory.GetHidden();
+		var hiddenKnown = DatabaseCapEnforcer.GetHiddenCandidates(characterDirectory, echoList);
 		var cacheKeys = hiddenKnown
 			.Select(known => CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId))
 			.ToList();
@@ -299,7 +272,7 @@ public sealed class DatabaseOverviewService(
 	{
 		var stopwatch = Stopwatch.StartNew();
 		DatabaseCapEnforcer.EnforceUnseen(
-			characterDirectory, lodestoneCache,
+			characterDirectory, lodestoneCache, echoList,
 			DatabaseCapEnforcer.ResolveCap(configuration.DatabaseCacheTier));
 
 		var seenNameWorldKeys = new HashSet<string>(characterDirectory.GetAllNameWorldKeys());
@@ -312,6 +285,7 @@ public sealed class DatabaseOverviewService(
 		this.unseen = UnseenCandidates
 			.Enumerate(
 				lodestoneCache.GetAllCachedProfiles(), resolvedByKey, seenNameWorldKeys, ownNameWorldKey)
+			.Where(row => !DatabaseCapEnforcer.IsPinnedUnseen(row, echoList))
 			.Select(this.BuildUnseenEntry)
 			.OrderByDescending(item => item.Timestamp)
 			.Select(item => item.Entry)
@@ -350,6 +324,11 @@ public sealed class DatabaseOverviewService(
 			resolvedJobAbbreviation, onlyResolved.Level?.ToString());
 		return (resolvedEntry, row.Timestamp);
 	}
+
+	private static LodestoneProfile BuildReportProfile(PinnedCharacter pin) =>
+		LodestoneProfile.BuildPartial(
+			pin.LodestoneId, pin.Name, pin.HomeWorldId, pin.AvatarUrlHash, pin.FreeCompanyId,
+			pin.FreeCompanyName, pin.JobId, pin.Level);
 
 	private static Lazy<IReadOnlyList<NameHistoryEntry>> LazyNameHistory(
 		CharacterDirectory characterDirectory, ulong contentId) =>

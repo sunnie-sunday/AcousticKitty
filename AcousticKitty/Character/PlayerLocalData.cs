@@ -3,6 +3,8 @@
 // SPDX-FileType: SOURCE
 // SPDX-FileContributor: Contributions by /xivg/
 
+using AcousticKitty.Common;
+
 namespace AcousticKitty.Character;
 
 public sealed record PlayerLocalData(
@@ -15,4 +17,7 @@ public sealed record PlayerLocalData(
 	uint TitleId,
 	uint TerritoryId,
 	uint CurrentWorldId,
-	string Gender);
+	string? Customize)
+{
+	public string Gender => CustomizeEncoding.DecodeGender(this.Customize);
+}
