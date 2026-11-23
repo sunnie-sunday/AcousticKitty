@@ -51,15 +51,17 @@ public static class GameDataResolver
 				return cached;
 			}
 
-			var dataCenterRowId = dataManager.GetExcelSheet<World>(ClientLanguage.English)
-				.GetRowOrDefault(worldId)?.DataCenter.RowId;
-			var name = dataCenterRowId is { } rowId
-				? ResolveDataCenterNameById(dataManager, rowId)
+			var world = dataManager.GetExcelSheet<World>(ClientLanguage.English).GetRowOrDefault(worldId);
+			var name = world is { } row
+				? ResolveDataCenterNameById(dataManager, LogicalDataCenterId(row))
 				: $"World #{worldId}";
 			WorldIdToDataCenterNameCache[worldId] = name;
 			return name;
 		}
 	}
+
+	private static uint LogicalDataCenterId(World world) =>
+		world.Unknown0 != 0 ? world.Unknown0 : world.DataCenter.RowId;
 
 	public static string ResolveDataCenterNameById(IDataManager dataManager, uint dataCenterId)
 	{
@@ -250,7 +252,7 @@ public static class GameDataResolver
 	{
 		var dataCentersWithPublicWorlds = dataManager.GetExcelSheet<World>(ClientLanguage.English)
 			.Where(world => world.IsPublic)
-			.Select(world => world.DataCenter.RowId)
+			.Select(LogicalDataCenterId)
 			.ToHashSet();
 
 		return dataManager.GetExcelSheet<WorldDCGroupType>(ClientLanguage.English)
