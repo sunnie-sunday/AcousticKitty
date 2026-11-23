@@ -7,10 +7,16 @@
 
 	<Target Name="GenerateEchoList" AfterTargets="ResolveProjectReferences">
 		<PropertyGroup>
+			<ReportRoot>$([MSBuild]::NormalizeDirectory('$(ProjectDir)', '$(BaseIntermediateOutputPath)', 'report'))</ReportRoot>
 			<ReportDirectory>$(ProjectDir)$(BaseIntermediateOutputPath)report\$(ReportVersion)</ReportDirectory>
 			<EchoListPath>$(ProjectDir)$(IntermediateOutputPath)stalkers.db3</EchoListPath>
 		</PropertyGroup>
 		<Exec Condition="!Exists('$(ReportDirectory)')" Command="git -c advice.detachedHead=false clone --quiet --depth 1 --branch $(ReportVersion) https://github.com/sunnie-sunday/report &quot;$(ReportDirectory)&quot;" IgnoreStandardErrorWarningFormat="true" />
+		<ItemGroup>
+			<StaleReportDirectory Include="$([System.IO.Directory]::GetDirectories('$(ReportRoot)'))" />
+			<StaleReportDirectory Remove="@(StaleReportDirectory)" Condition="'%(StaleReportDirectory.Filename)%(StaleReportDirectory.Extension)' == '$(ReportVersion)'" />
+		</ItemGroup>
+		<RemoveDir Directories="@(StaleReportDirectory)" ContinueOnError="WarnAndContinue" />
 		<Exec Command="&quot;$([MSBuild]::ValueOrDefault('$(DOTNET_HOST_PATH)', 'dotnet'))&quot; &quot;@(SunnieSundayReport)&quot; &quot;$(ReportDirectory)\content\characters&quot; &quot;$(EchoListPath)&quot;" />
 		<ItemGroup>
 			<Content Include="$(EchoListPath)" Link="stalkers.db3" CopyToOutputDirectory="PreserveNewest" />
