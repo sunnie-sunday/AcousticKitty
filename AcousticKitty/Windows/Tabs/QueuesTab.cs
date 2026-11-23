@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using AcousticKitty.Character;
+using AcousticKitty.Echo;
 using AcousticKitty.Lodestone;
 using AcousticKitty.Windows.Views;
 using Dalamud.Bindings.ImGui;
@@ -30,8 +31,8 @@ internal sealed class QueuesTab(Plugin plugin)
 		}
 
 		var nearby = plugin.NearbyCharactersService;
-		var queueCountLabel =
-			nearby.QueueMightHaveMore ? $"{nearby.Queue.Count}+" : nearby.Queue.Count.ToString();
+		var queueCount = nearby.Queue.Count + plugin.ProfileRefresh.PendingCount;
+		var queueCountLabel = nearby.QueueMightHaveMore ? $"{queueCount}+" : queueCount.ToString();
 		if (ImGui.BeginTabItem($"Lodestone ({queueCountLabel})###QueuesLodestoneTab"))
 		{
 			this.DrawLodestoneQueue(nearby);
@@ -75,7 +76,21 @@ internal sealed class QueuesTab(Plugin plugin)
 			nearby.Queue, "The Lodestone search queue is empty.", this.lodestoneFilterCache,
 			ref this.lodestoneNameFilter, ref this.lodestonePage,
 			member => member.KnownCharacter.Data.Name, "LodestoneQueue", QueuesTab.DrawLodestoneRow,
-			() => QueuesTab.DrawActiveFreeCompanyRows(plugin.GroupSearchService));
+			() =>
+			{
+				QueuesTab.DrawActiveFreeCompanyRows(plugin.GroupSearchService);
+				QueuesTab.DrawProfileRefreshRows(plugin.ProfileRefresh);
+			});
+	}
+
+	private static void DrawProfileRefreshRows(ProfileRefresh profileRefresh)
+	{
+		foreach (var (pin, worldName) in profileRefresh.Pending)
+		{
+			ImGui.TextUnformatted($"{pin.Name} @ {worldName}");
+			ImGui.TextColored(ImGuiColors.DalamudGrey3, $"Lodestone ID {pin.LodestoneId}");
+			ImGui.Separator();
+		}
 	}
 
 	private static void DrawActiveFreeCompanyRows(GroupSearchService groupSearchService)

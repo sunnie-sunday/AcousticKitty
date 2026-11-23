@@ -46,6 +46,7 @@ public sealed class Plugin : IDalamudPlugin
 	internal GroupSearchService GroupSearchService { get; }
 	internal NearbyCharactersService NearbyCharactersService { get; }
 	internal DatabaseOverviewService DatabaseOverviewService { get; }
+	internal ProfileRefresh ProfileRefresh { get; }
 
 	private readonly LodestoneCache lodestoneCache;
 	private readonly EchoList echoList;
@@ -63,10 +64,8 @@ public sealed class Plugin : IDalamudPlugin
 		this.Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 
 		this.LodestoneClient = new LodestoneClient(Log);
-		this.echoList = new EchoList(
-			PluginInterface.AssemblyLocation.DirectoryName!,
-			worldName => GameDataResolver.TryResolveWorldId(DataManager, worldName),
-			Log);
+		this.echoList =
+			new EchoList(PluginInterface.AssemblyLocation.DirectoryName!, DataManager, Log);
 		this.lodestoneCache = new LodestoneCache(PluginInterface.ConfigDirectory.FullName);
 		this.characterDirectory =
 			new CharacterDirectory(PluginInterface.ConfigDirectory.FullName, Log);
@@ -77,6 +76,14 @@ public sealed class Plugin : IDalamudPlugin
 		this.freeCompanyIdIndex = new FreeCompanyIdIndex(this.characterDirectory, this.lodestoneCache);
 		this.avatarWorldHistoryService = new AvatarWorldHistoryService(
 			this.LodestoneClient, this.characterDirectory, DataManager, Log);
+		this.ProfileRefresh = new ProfileRefresh(
+			this.LodestoneClient,
+			this.lodestoneCache,
+			this.echoList,
+			this.Configuration,
+			PluginInterface.Manifest.AssemblyVersion.ToString(),
+			DataManager,
+			Log);
 		this.AvatarTextureCache = new AvatarTextureCache(this.LodestoneClient, TextureProvider);
 		this.GroupSearchService = new GroupSearchService(
 			this.LodestoneClient,
@@ -102,6 +109,7 @@ public sealed class Plugin : IDalamudPlugin
 			this.avatarWorldHistoryService,
 			this.GroupSearchService,
 			this.freeCompanyIdIndex,
+			this.ProfileRefresh,
 			Log);
 		this.DatabaseOverviewService = new DatabaseOverviewService(
 			this.lodestoneCache, this.echoList, this.characterDirectory, DataManager, PlayerState,

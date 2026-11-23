@@ -12,7 +12,12 @@ public sealed record PinnedCharacter(
 	ulong LodestoneId,
 	string NameWorldKey,
 	string Name,
-	uint HomeWorldId);
+	uint HomeWorldId,
+	string AvatarUrlHash,
+	uint? JobId,
+	int Level,
+	ulong? FreeCompanyId,
+	string? FreeCompanyName);
 
 [Table("Pins")]
 internal sealed class PinRow
@@ -28,4 +33,16 @@ internal sealed class PinRow
 
 	[NotNull]
 	public string HomeWorld { get; set; } = string.Empty;
+
+	[NotNull]
+	public string AvatarUrlHash { get; set; } = string.Empty;
+
+	[NotNull]
+	public string Job { get; set; } = string.Empty;
+
+	public int Level { get; set; }
+
+	public long? FreeCompanyId { get; set; }
+
+	public string? FreeCompanyName { get; set; }
 }

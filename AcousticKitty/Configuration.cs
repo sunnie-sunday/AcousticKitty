@@ -17,6 +17,7 @@ public sealed class Configuration : IPluginConfiguration
 
 	public NearbySearchMode NearbySearchMode { get; set; } = NearbySearchMode.Manual;
 	public DatabaseCacheTier DatabaseCacheTier { get; set; } = DatabaseCacheTier.Medium;
+	public string? PinnedProfilesRefreshedFor { get; set; }
 
 	public void Save()
 	{

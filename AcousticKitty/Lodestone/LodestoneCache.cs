@@ -328,6 +328,35 @@ public sealed partial class LodestoneCache : IDisposable
 		return result;
 	}
 
+	public IReadOnlyList<ResolvedCharacterEntry> GetResolvedForLodestoneIds(
+		IEnumerable<ulong> lodestoneIds)
+	{
+		var result = new List<ResolvedCharacterEntry>();
+		var ids = lodestoneIds.Distinct().Select(id => (long)id).ToList();
+		foreach (var chunk in ids.Chunk(BulkQueryBatchSize))
+		{
+			var chunkIds = chunk.ToList();
+			lock (this.gate)
+			{
+				if (this.disposed)
+				{
+					return result;
+				}
+
+				result.AddRange(this.connection.Table<ResolvedCharacterRow>()
+					.Where(row => chunkIds.Contains(row.LodestoneId))
+					.Select(row => new ResolvedCharacterEntry(
+						row.Key, row.Name, (uint)row.HomeWorldId, (ulong)row.LodestoneId,
+						UtcTimestamp.Parse(row.ResolvedAtUtc), row.AvatarUrlHash,
+						row.Level, row.JobId.HasValue ? (uint)row.JobId.Value : null,
+						row.FreeCompanyId.HasValue ? (ulong)row.FreeCompanyId.Value : null,
+						row.FreeCompanyName)));
+			}
+		}
+
+		return result;
+	}
+
 	public void SavePinnedProfileSnapshot(
 		ulong lodestoneId, LodestoneProfile profile, DateTime? fetchedAtUtc) =>
 		this.Write(() => this.connection.InsertOrReplace(new PinnedProfileRow

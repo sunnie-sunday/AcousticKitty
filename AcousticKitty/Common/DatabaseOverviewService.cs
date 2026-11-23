@@ -108,11 +108,22 @@ public sealed class DatabaseOverviewService(
 				?? characterDirectory.TryGetByLodestoneId(pin.LodestoneId)))
 			.ToList();
 
-		var nameWorldKeys = pins
-			.Select(row => row.Known is { LookupState: not NearbyLookupState.Transferred } known
+		var resolvedKeyByLodestoneId = lodestoneCache
+			.GetResolvedForLodestoneIds(
+				pins.Where(row => row.Known == null).Select(row => row.Pin.LodestoneId))
+			.GroupBy(resolved => resolved.LodestoneId)
+			.ToDictionary(
+				group => group.Key, group => group.MaxBy(resolved => resolved.ResolvedAtUtc)!.Key);
+		var cacheKeys = pins
+			.Select(row => row.Known is { } known
 				? CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId)
-				: row.Known == null ? row.Pin.NameWorldKey : null)
-			.OfType<string>()
+				: resolvedKeyByLodestoneId.GetValueOrDefault(row.Pin.LodestoneId) ??
+					row.Pin.NameWorldKey)
+			.ToList();
+		var nameWorldKeys = pins
+			.Zip(cacheKeys)
+			.Where(pair => pair.First.Known is not { LookupState: NearbyLookupState.Transferred })
+			.Select(pair => pair.Second)
 			.Distinct()
 			.ToList();
 		var cachedProfilesByKey =
@@ -121,15 +132,18 @@ public sealed class DatabaseOverviewService(
 			lodestoneCache.GetResolvedForKeys(nameWorldKeys).ToDictionary(resolved => resolved.Key);
 
 		var pinnedList = pins
+			.Zip(cacheKeys, (row, cacheKey) => (row.Pin, row.Known, CacheKey: cacheKey))
 			.OrderByDescending(row => row.Known?.LastSeenUtc ?? DateTime.MinValue)
 			.ThenBy(row => row.Known?.Data.Name ?? row.Pin.Name, StringComparer.OrdinalIgnoreCase)
 			.Select(row =>
 			{
-				var (pin, known) = row;
-				var name = known?.Data.Name ?? pin.Name;
-				var homeWorldId = known?.Data.HomeWorldId ?? pin.HomeWorldId;
-				var cacheKey = CharacterKey.Build(name, homeWorldId);
+				var (pin, known, cacheKey) = row;
 				var isTransferred = known is { LookupState: NearbyLookupState.Transferred };
+				var cached = isTransferred ? null : cachedProfilesByKey.GetValueOrDefault(cacheKey);
+				var resolved = isTransferred ? null : resolvedByKey.GetValueOrDefault(cacheKey);
+				var name = known?.Data.Name ?? resolved?.Name ?? pin.Name;
+				var homeWorldId =
+					known?.Data.HomeWorldId ?? resolved?.HomeWorldId ?? pin.HomeWorldId;
 				var worldName = GameDataResolver.ResolveWorldName(dataManager, homeWorldId);
 				var dataCenterName = GameDataResolver.ResolveDataCenterName(dataManager, homeWorldId);
 				var nameHistory = known != null
@@ -146,10 +160,15 @@ public sealed class DatabaseOverviewService(
 					profileFetchedAtUtc = snapshot?.FetchedAtUtc;
 					avatarUrlHash = snapshot?.Profile.AvatarUrlHash;
 				}
+				else if (known == null && cached == null && resolved == null)
+				{
+					var partial = DatabaseOverviewService.BuildReportProfile(pin);
+					profile = new Lazy<LodestoneProfile>(() => partial);
+					profileFetchedAtUtc = null;
+					avatarUrlHash = pin.AvatarUrlHash;
+				}
 				else
 				{
-					var cached = cachedProfilesByKey.GetValueOrDefault(cacheKey);
-					var resolved = resolvedByKey.GetValueOrDefault(cacheKey);
 					(profile, profileFetchedAtUtc) = LodestoneProfile.ResolveOrPartial(cached, resolved);
 					avatarUrlHash = resolved?.AvatarUrlHash;
 				}
@@ -305,6 +324,11 @@ public sealed class DatabaseOverviewService(
 			resolvedJobAbbreviation, onlyResolved.Level?.ToString());
 		return (resolvedEntry, row.Timestamp);
 	}
+
+	private static LodestoneProfile BuildReportProfile(PinnedCharacter pin) =>
+		LodestoneProfile.BuildPartial(
+			pin.LodestoneId, pin.Name, pin.HomeWorldId, pin.AvatarUrlHash, pin.FreeCompanyId,
+			pin.FreeCompanyName, pin.JobId, pin.Level);
 
 	private static Lazy<IReadOnlyList<NameHistoryEntry>> LazyNameHistory(
 		CharacterDirectory characterDirectory, ulong contentId) =>

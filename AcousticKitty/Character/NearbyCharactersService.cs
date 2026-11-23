@@ -45,6 +45,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 	private readonly AvatarWorldHistoryService avatarWorldHistory;
 	private readonly GroupSearchService groupSearch;
 	private readonly FreeCompanyIdIndex freeCompanyIdIndex;
+	private readonly ProfileRefresh profileRefresh;
 	private readonly IPluginLog log;
 	private readonly CancellationTokenSource disposalCts = new();
 
@@ -79,6 +80,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 		AvatarWorldHistoryService avatarWorldHistory,
 		GroupSearchService groupSearch,
 		FreeCompanyIdIndex freeCompanyIdIndex,
+		ProfileRefresh profileRefresh,
 		IPluginLog log)
 	{
 		this.playerState = playerState;
@@ -94,6 +96,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 		this.avatarWorldHistory = avatarWorldHistory;
 		this.groupSearch = groupSearch;
 		this.freeCompanyIdIndex = freeCompanyIdIndex;
+		this.profileRefresh = profileRefresh;
 		this.log = log;
 
 		this.clientState.Logout += this.OnLogout;
@@ -440,6 +443,13 @@ public sealed partial class NearbyCharactersService : IDisposable
 		{
 			while (true)
 			{
+				if (await this.profileRefresh
+					.TryRefreshNextAsync(this.drainStopCts.Token)
+					.ConfigureAwait(false))
+				{
+					continue;
+				}
+
 				IReadOnlyList<KnownCharacter> pending;
 				try
 				{

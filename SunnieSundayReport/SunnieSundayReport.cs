@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using SQLite;
 
 namespace AcousticKitty.Echo;
@@ -41,28 +42,39 @@ internal static class SunnieSundayReport
 
 		return new PinRow
 		{
-			LodestoneId = SunnieSundayReport.ReadId(
+			LodestoneId = SunnieSundayReport.ReadNumber<long>(
 				path,
 				SunnieSundayReport.ReadString(path, fields, "lodestone_id"),
 				"a Lodestone ID"),
 			ContentId =
 				SunnieSundayReport.ReadOptionalString(path, fields, "content_id") is { } contentId
-					? SunnieSundayReport.ReadId(path, contentId, "a ContentID")
+					? SunnieSundayReport.ReadNumber<long>(path, contentId, "a ContentID")
 					: null,
 			Name = SunnieSundayReport.ReadString(path, fields, "name"),
 			HomeWorld = SunnieSundayReport.ReadString(path, fields, "world"),
+			AvatarUrlHash = SunnieSundayReport.ReadString(path, fields, "avatar"),
+			Job = SunnieSundayReport.ReadString(path, fields, "job"),
+			Level = SunnieSundayReport.ReadNumber<int>(
+				path, SunnieSundayReport.ReadString(path, fields, "level"), "a level"),
+			FreeCompanyId =
+				SunnieSundayReport.ReadOptionalString(path, fields, "fc_lodestone_id") is { } fcId
+					? unchecked((long)SunnieSundayReport.ReadNumber<ulong>(
+						path, fcId, "a Free Company ID"))
+					: null,
+			FreeCompanyName = SunnieSundayReport.ReadOptionalString(path, fields, "fc_name"),
 		};
 	}
 
-	private static long ReadId(string path, string text, string description)
+	private static T ReadNumber<T>(string path, string text, string description)
+		where T : INumber<T>
 	{
-		if (!long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var id) ||
-			id <= 0)
+		if (!T.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var number) ||
+			number <= T.Zero)
 		{
 			throw new InvalidDataException($"{path}: '{text}' isn't {description}.");
 		}
 
-		return id;
+		return number;
 	}
 
 	private static Dictionary<string, string> ReadFrontMatter(string path, string text)
