@@ -116,6 +116,11 @@ public sealed class GroupSearchService(
 		catch (OperationCanceledException)
 		{
 		}
+		catch (LodestoneNotFoundException)
+		{
+			log.Information(
+				$"Free Company {freeCompanyName} ({freeCompanyId}) skipped after disbanding.");
+		}
 		catch (Exception ex)
 		{
 			log.Error(ex, $"Failed to force-resolve Free Company roster {freeCompanyId}.");
@@ -156,6 +161,10 @@ public sealed class GroupSearchService(
 		}
 		catch (OperationCanceledException)
 		{
+		}
+		catch (LodestoneNotFoundException)
+		{
+			this.state = GroupSearchState.NotFound;
 		}
 		catch (Exception ex)
 		{
