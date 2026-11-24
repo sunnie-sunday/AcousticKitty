@@ -196,7 +196,7 @@ public sealed partial class LodestoneCache : IDisposable
 			},
 			null);
 
-	public (LodestoneProfile? Profile, DateTime? FetchedAtUtc) ResolveProfileOrPartial(string key)
+	public (LodestoneProfile? Profile, DateTime? FetchedAtUtc) ResolveProfileOrPartial(string key, bool isPrivate)
 	{
 		var cached = this.TryGetCachedProfile(key);
 		if (cached != null)
@@ -208,7 +208,8 @@ public sealed partial class LodestoneCache : IDisposable
 		return resolved != null
 			? (LodestoneProfile.BuildPartial(
 				resolved.LodestoneId, resolved.Name, resolved.HomeWorldId, resolved.AvatarUrlHash,
-				resolved.FreeCompanyId, resolved.FreeCompanyName, resolved.JobId, resolved.Level), null)
+				resolved.FreeCompanyId, resolved.FreeCompanyName, resolved.JobId, resolved.Level,
+				isPrivate), null)
 			: (null, null);
 	}
 

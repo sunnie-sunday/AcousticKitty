@@ -23,12 +23,12 @@ public sealed record LodestoneProfile(
 {
 	public static LodestoneProfile BuildPartial(
 		ulong lodestoneId, string name, uint homeWorldId, string? avatarUrlHash,
-		ulong? freeCompanyId, string? freeCompanyName, uint? jobId, int? level) =>
-		new(lodestoneId, name, TitleId: null, homeWorldId, avatarUrlHash, IsPartiallyPrivate: true,
+		ulong? freeCompanyId, string? freeCompanyName, uint? jobId, int? level, bool isPrivate) =>
+		new(lodestoneId, name, TitleId: null, homeWorldId, avatarUrlHash, IsPartiallyPrivate: isPrivate,
 			Gender: string.Empty, freeCompanyId, freeCompanyName, jobId, level);
 
 	public static (Lazy<LodestoneProfile>? Profile, DateTime? FetchedAtUtc) ResolveOrPartial(
-		CachedProfileEntry? cached, ResolvedCharacterEntry? resolved)
+		CachedProfileEntry? cached, ResolvedCharacterEntry? resolved, bool isPrivate)
 	{
 		if (cached != null)
 		{
@@ -42,7 +42,7 @@ public sealed record LodestoneProfile(
 
 		var partial = LodestoneProfile.BuildPartial(
 			resolved.LodestoneId, resolved.Name, resolved.HomeWorldId, resolved.AvatarUrlHash,
-			resolved.FreeCompanyId, resolved.FreeCompanyName, resolved.JobId, resolved.Level);
+			resolved.FreeCompanyId, resolved.FreeCompanyName, resolved.JobId, resolved.Level, isPrivate);
 		return (new Lazy<LodestoneProfile>(() => partial), null);
 	}
 }

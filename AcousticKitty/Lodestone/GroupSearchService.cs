@@ -312,7 +312,7 @@ public sealed class GroupSearchService(
 			{
 				viewModel.Profile = LodestoneProfile.BuildPartial(
 					entry.CharacterId, entry.Name, entry.HomeWorldId, entry.AvatarUrlHash,
-					entry.FreeCompanyId, entry.FreeCompanyName, entry.JobId, entry.Level);
+					entry.FreeCompanyId, entry.FreeCompanyName, entry.JobId, entry.Level, isPrivate: false);
 				viewModel.ProfileState = MemberProfileState.Loaded;
 				collected.Add(viewModel);
 				continue;
@@ -374,7 +374,7 @@ public sealed class GroupSearchService(
 				{
 					viewModel.Profile = LodestoneProfile.BuildPartial(
 						entry.CharacterId, entry.Name, entry.HomeWorldId, entry.AvatarUrlHash,
-						entry.FreeCompanyId, entry.FreeCompanyName, entry.JobId, entry.Level);
+						entry.FreeCompanyId, entry.FreeCompanyName, entry.JobId, entry.Level, isPrivate: true);
 					viewModel.ProfileState = MemberProfileState.Loaded;
 				}
 			}

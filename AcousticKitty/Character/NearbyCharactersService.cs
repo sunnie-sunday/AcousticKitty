@@ -339,7 +339,8 @@ public sealed partial class NearbyCharactersService : IDisposable
 			this.echoList.IsPinned(priorHolder.Data.ContentId, priorHolder.LodestoneId);
 		if (priorIsPinned)
 		{
-			var (profile, fetchedAtUtc) = this.lodestoneCache.ResolveProfileOrPartial(nameWorldKey);
+			var (profile, fetchedAtUtc) = this.lodestoneCache.ResolveProfileOrPartial(
+				nameWorldKey, priorHolder.LookupState == NearbyLookupState.AccessRestricted);
 			if (profile != null && priorHolder.LodestoneId != null)
 			{
 				this.lodestoneCache.SavePinnedProfileSnapshot(
@@ -420,7 +421,8 @@ public sealed partial class NearbyCharactersService : IDisposable
 
 		if (known.LodestoneId != null)
 		{
-			(profile, profileAsOfUtc) = this.lodestoneCache.ResolveProfileOrPartial(cacheKey);
+			(profile, profileAsOfUtc) = this.lodestoneCache.ResolveProfileOrPartial(
+				cacheKey, known.LookupState == NearbyLookupState.AccessRestricted);
 			avatarUrlHash = profile?.AvatarUrlHash ?? this.lodestoneCache.TryGetResolvedAvatarUrlHash(cacheKey);
 		}
 

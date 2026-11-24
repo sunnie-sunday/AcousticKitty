@@ -169,7 +169,8 @@ public sealed class DatabaseOverviewService(
 				}
 				else
 				{
-					(profile, profileFetchedAtUtc) = LodestoneProfile.ResolveOrPartial(cached, resolved);
+					(profile, profileFetchedAtUtc) = LodestoneProfile.ResolveOrPartial(
+						cached, resolved, known is { LookupState: NearbyLookupState.AccessRestricted });
 					avatarUrlHash = resolved?.AvatarUrlHash;
 				}
 
@@ -211,7 +212,8 @@ public sealed class DatabaseOverviewService(
 				cachedProfilesByKey.TryGetValue(cacheKey, out var cached);
 				resolvedByKey.TryGetValue(cacheKey, out var resolved);
 
-				var (profile, profileFetchedAtUtc) = LodestoneProfile.ResolveOrPartial(cached, resolved);
+				var (profile, profileFetchedAtUtc) = LodestoneProfile.ResolveOrPartial(
+					cached, resolved, known.LookupState == NearbyLookupState.AccessRestricted);
 				return new DatabaseEntryViewModel(
 					cacheKey, known.Data.Name, worldName, false,
 					profile, profileFetchedAtUtc, known.Data, known.LastSeenUtc,
@@ -317,7 +319,8 @@ public sealed class DatabaseOverviewService(
 		var resolvedJobAbbreviation = onlyResolved.JobId is { } resolvedJobId
 			? GameDataResolver.ResolveJobAbbreviation(dataManager, resolvedJobId)
 			: null;
-		var (profile, profileFetchedAtUtc) = LodestoneProfile.ResolveOrPartial(null, onlyResolved);
+		var (profile, profileFetchedAtUtc) = LodestoneProfile.ResolveOrPartial(
+			null, onlyResolved, isPrivate: false);
 		var resolvedEntry = new DatabaseEntryViewModel(
 			row.Key, onlyResolved.Name, worldName, false,
 			profile, profileFetchedAtUtc, null, null, onlyResolved.AvatarUrlHash, dataCenterName,
@@ -328,7 +331,7 @@ public sealed class DatabaseOverviewService(
 	private static LodestoneProfile BuildReportProfile(PinnedCharacter pin) =>
 		LodestoneProfile.BuildPartial(
 			pin.LodestoneId, pin.Name, pin.HomeWorldId, pin.AvatarUrlHash, pin.FreeCompanyId,
-			pin.FreeCompanyName, pin.JobId, pin.Level);
+			pin.FreeCompanyName, pin.JobId, pin.Level, isPrivate: false);
 
 	private static Lazy<IReadOnlyList<NameHistoryEntry>> LazyNameHistory(
 		CharacterDirectory characterDirectory, ulong contentId) =>
