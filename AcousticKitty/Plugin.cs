@@ -16,6 +16,7 @@ using Dalamud.Plugin.Services;
 
 namespace AcousticKitty;
 
+// Plugin scaffolding based on goatcorp/SamplePlugin: https://github.com/goatcorp/SamplePlugin
 public sealed class Plugin : IDalamudPlugin
 {
 	#region Dalamud Services

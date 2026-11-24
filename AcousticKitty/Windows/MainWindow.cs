@@ -65,6 +65,7 @@ public sealed class MainWindow : Window, IDisposable
 	{
 	}
 
+	// Sidebar tab layout based on PunishXIV/Artisan: https://github.com/PunishXIV/Artisan
 	public override void Draw()
 	{
 		this.fileDialogManager.Draw();
