@@ -102,8 +102,16 @@ public sealed class LodestoneNotFoundException()
 public sealed class LodestoneAccessRestrictedException()
 	: Exception("This character has made their Lodestone profile private.");
 
-public sealed class LodestoneMaintenanceException(TimeSpan? retryAfter)
-	: Exception("The Lodestone is currently undergoing maintenance.")
+public class LodestoneUnavailableException(
+	string message, TimeSpan? retryAfter, Exception? innerException = null)
+	: Exception(message, innerException)
 {
 	public TimeSpan? RetryAfter { get; } = retryAfter;
 }
+
+public sealed class LodestoneMaintenanceException(TimeSpan? retryAfter)
+	: LodestoneUnavailableException(
+		"The Lodestone is currently undergoing maintenance.", retryAfter);
+
+public sealed class LodestoneThrottledException(TimeSpan? retryAfter)
+	: LodestoneUnavailableException("The Lodestone is throttling requests.", retryAfter);

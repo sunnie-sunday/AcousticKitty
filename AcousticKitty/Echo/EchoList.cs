@@ -106,8 +106,6 @@ public sealed class EchoList
 
 public sealed class ProfileRefresh
 {
-	private static readonly TimeSpan MaintenanceBackoff = TimeSpan.FromMinutes(5);
-
 	private readonly ILodestoneClient client;
 	private readonly LodestoneCache lodestoneCache;
 	private readonly Configuration configuration;
@@ -115,7 +113,6 @@ public sealed class ProfileRefresh
 	private readonly IDataManager dataManager;
 	private readonly IPluginLog log;
 	private readonly ConcurrentQueue<(PinnedCharacter Pin, string WorldName)> pending;
-	private DateTime notBeforeUtc = DateTime.MinValue;
 
 	public ProfileRefresh(
 		ILodestoneClient client,
@@ -145,7 +142,7 @@ public sealed class ProfileRefresh
 
 	public async Task<bool> TryRefreshNextAsync(CancellationToken cancellationToken)
 	{
-		if (DateTime.UtcNow < this.notBeforeUtc || !this.pending.TryPeek(out var next))
+		if (!this.pending.TryPeek(out var next))
 		{
 			return false;
 		}
@@ -159,10 +156,9 @@ public sealed class ProfileRefresh
 				.ConfigureAwait(false);
 			this.Save(pin, profile);
 		}
-		catch (LodestoneMaintenanceException ex)
+		catch (LodestoneUnavailableException)
 		{
-			this.notBeforeUtc = DateTime.UtcNow + (ex.RetryAfter ?? MaintenanceBackoff);
-			return false;
+			return true;
 		}
 		catch (Exception ex) when (ex is not OperationCanceledException)
 		{
