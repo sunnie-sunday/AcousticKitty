@@ -121,6 +121,16 @@ public sealed class GroupSearchService(
 			log.Information(
 				$"Free Company {freeCompanyName} ({freeCompanyId}) skipped after disbanding.");
 		}
+		catch (LodestoneUnavailableException ex)
+		{
+			lock (this.forceSearchGate)
+			{
+				this.forceSearchedFreeCompanyIds.Remove(freeCompanyId);
+			}
+
+			log.Warning(
+				$"Free Company {freeCompanyName} ({freeCompanyId}) roster interrupted: {ex.Message}");
+		}
 		catch (Exception ex)
 		{
 			log.Error(ex, $"Failed to force-resolve Free Company roster {freeCompanyId}.");

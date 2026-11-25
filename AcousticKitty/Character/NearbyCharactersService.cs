@@ -615,6 +615,10 @@ public sealed partial class NearbyCharactersService : IDisposable
 		{
 			this.MarkHidden(known);
 		}
+		catch (LodestoneUnavailableException ex)
+		{
+			this.log.Warning($"Postponed {known.Data.Name}'s Lodestone lookup: {ex.Message}");
+		}
 		catch (Exception ex) when (ex is not OperationCanceledException)
 		{
 			this.log.Error(ex, "Failed to resolve a nearby character's Lodestone profile.");

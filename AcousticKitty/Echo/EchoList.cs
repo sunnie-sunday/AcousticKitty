@@ -159,7 +159,7 @@ public sealed class ProfileRefresh
 				.ConfigureAwait(false);
 			this.Save(pin, profile);
 		}
-		catch (LodestoneMaintenanceException ex)
+		catch (LodestoneUnavailableException ex)
 		{
 			this.notBeforeUtc = DateTime.UtcNow + (ex.RetryAfter ?? MaintenanceBackoff);
 			return false;
