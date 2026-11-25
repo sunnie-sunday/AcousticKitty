@@ -67,13 +67,25 @@ public sealed class LodestoneClient(IPluginLog log)
 		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
 		"Chrome/152.0.0.0 Safari/537.36 Edg/152.0.4191.66";
 
+	private static readonly TimeSpan MaintenanceBackoff = TimeSpan.FromMinutes(5);
+
+	private static readonly TimeSpan InitialBackoff = TimeSpan.FromSeconds(30);
+
+	private static readonly TimeSpan MaxBackoff = TimeSpan.FromMinutes(5);
+
 	private readonly RateLimiter rateLimiter = new(TimeSpan.FromSeconds(1));
 
 	private readonly RateLimiter avatarRateLimiter = new(TimeSpan.FromMilliseconds(20));
 
 	private readonly object clientGate = new();
 
+	private readonly object backoffGate = new();
+
 	private HttpClient? cachedClient;
+
+	private DateTime pausedUntilUtc = DateTime.MinValue;
+
+	private TimeSpan nextBackoff = InitialBackoff;
 
 	#region Endpoints
 
@@ -203,8 +215,85 @@ public sealed class LodestoneClient(IPluginLog log)
 
 	private async Task<string> GetStringAsync(string url, CancellationToken cancellationToken)
 	{
-		await this.rateLimiter.WaitAsync(highPriority: true, cancellationToken).ConfigureAwait(false);
+		await this.WaitForRequestSlotAsync(cancellationToken).ConfigureAwait(false);
+		try
+		{
+			var body = await this.SendAsync(url, cancellationToken).ConfigureAwait(false);
+			this.ResetBackoff();
+			return body;
+		}
+		catch (LodestoneUnavailableException ex)
+		{
+			this.PauseRequests(ex);
+			throw;
+		}
+	}
 
+	private async Task WaitForRequestSlotAsync(CancellationToken cancellationToken)
+	{
+		while (true)
+		{
+			var remaining = this.GetPauseRemaining();
+			if (remaining > TimeSpan.Zero)
+			{
+				await Task.Delay(remaining, cancellationToken).ConfigureAwait(false);
+				continue;
+			}
+
+			await this.rateLimiter.WaitAsync(highPriority: true, cancellationToken)
+				.ConfigureAwait(false);
+			if (this.GetPauseRemaining() <= TimeSpan.Zero)
+			{
+				return;
+			}
+		}
+	}
+
+	private TimeSpan GetPauseRemaining()
+	{
+		lock (this.backoffGate)
+		{
+			return this.pausedUntilUtc - DateTime.UtcNow;
+		}
+	}
+
+	private void PauseRequests(LodestoneUnavailableException ex)
+	{
+		TimeSpan delay;
+		lock (this.backoffGate)
+		{
+			var now = DateTime.UtcNow;
+			if (now < this.pausedUntilUtc)
+			{
+				return;
+			}
+
+			delay = ex.RetryAfter ?? (ex is LodestoneMaintenanceException
+				? MaintenanceBackoff
+				: this.nextBackoff);
+			if (ex.RetryAfter == null && ex is not LodestoneMaintenanceException)
+			{
+				var doubled = this.nextBackoff * 2;
+				this.nextBackoff = doubled < MaxBackoff ? doubled : MaxBackoff;
+			}
+
+			this.pausedUntilUtc = now + delay;
+		}
+
+		log.Warning(
+			$"Pausing Lodestone requests for {delay.TotalSeconds:0} s: {ex.Message}");
+	}
+
+	private void ResetBackoff()
+	{
+		lock (this.backoffGate)
+		{
+			this.nextBackoff = InitialBackoff;
+		}
+	}
+
+	private async Task<string> SendAsync(string url, CancellationToken cancellationToken)
+	{
 		var client = this.GetOrCreateHttpClient();
 		var stopwatch = Stopwatch.StartNew();
 		using var response = await LodestoneClient
