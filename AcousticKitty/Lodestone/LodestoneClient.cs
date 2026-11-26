@@ -52,6 +52,8 @@ public interface ILodestoneClient
 		CancellationToken cancellationToken);
 
 	Task<byte[]> GetAvatarBytesAsync(string avatarUrl, bool highPriority, CancellationToken cancellationToken);
+
+	Task WaitUntilAvailableAsync(CancellationToken cancellationToken);
 }
 
 #endregion
@@ -195,6 +197,14 @@ public sealed class LodestoneClient(IPluginLog log)
 		using var response = await client.GetAsync(avatarUrl, cancellationToken).ConfigureAwait(false);
 		response.EnsureSuccessStatusCode();
 		return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+	}
+
+	public async Task WaitUntilAvailableAsync(CancellationToken cancellationToken)
+	{
+		while (this.GetPauseRemaining() is var remaining && remaining > TimeSpan.Zero)
+		{
+			await Task.Delay(remaining, cancellationToken).ConfigureAwait(false);
+		}
 	}
 
 	#endregion

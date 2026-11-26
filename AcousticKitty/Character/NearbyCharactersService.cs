@@ -440,6 +440,8 @@ public sealed partial class NearbyCharactersService : IDisposable
 		{
 			while (true)
 			{
+				await this.client.WaitUntilAvailableAsync(this.drainStopCts.Token).ConfigureAwait(false);
+
 				if (await this.profileRefresh
 					.TryRefreshNextAsync(this.drainStopCts.Token)
 					.ConfigureAwait(false))
@@ -450,7 +452,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 				IReadOnlyList<KnownCharacter> pending;
 				try
 				{
-					pending = this.characterDirectory.GetPending();
+					pending = this.characterDirectory.GetPending(1);
 				}
 				catch (Exception ex)
 				{
@@ -465,10 +467,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 					continue;
 				}
 
-				foreach (var known in pending)
-				{
-					await this.ResolveOneAsync(known, this.drainStopCts.Token).ConfigureAwait(false);
-				}
+				await this.ResolveOneAsync(pending[0], this.drainStopCts.Token).ConfigureAwait(false);
 			}
 		}
 		catch (OperationCanceledException)

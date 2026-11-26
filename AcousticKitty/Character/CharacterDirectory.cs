@@ -223,8 +223,6 @@ public sealed partial class CharacterDirectory : IDisposable
 			this.connection.Update(row);
 		});
 
-	public IReadOnlyList<KnownCharacter> GetPending() => this.GetPending(int.MaxValue);
-
 	public IReadOnlyList<KnownCharacter> GetPending(int limit) =>
 		this.Read<IReadOnlyList<KnownCharacter>>(
 			() =>
