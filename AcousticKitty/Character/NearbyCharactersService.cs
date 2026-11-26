@@ -580,10 +580,13 @@ public sealed partial class NearbyCharactersService : IDisposable
 						.GetProfileAsync(lodestoneId.Value, this.dataManager, cancellationToken)
 						.ConfigureAwait(false);
 
+					var fetchedAtUtc = DateTime.UtcNow;
 					var saved =
-						this.lodestoneCache.SaveCachedProfile(cacheKey, profile, DateTime.UtcNow);
+						this.lodestoneCache.SaveCachedProfile(cacheKey, profile, fetchedAtUtc);
 					if (saved)
 					{
+						this.groupSearch.ApplyFetchedProfile(
+							lodestoneId.Value, profile, fetchedAtUtc);
 						this.freeCompanyIdIndex.Record(
 							known.Data.FreeCompanyTag, known.Data.HomeWorldId, profile.FreeCompanyId,
 							profile.FreeCompanyName);

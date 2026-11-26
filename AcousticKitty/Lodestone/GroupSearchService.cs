@@ -50,7 +50,6 @@ public sealed class GroupSearchService(
 	public string? ErrorMessage => this.errorMessage;
 
 	public IReadOnlyList<GroupSearchResult> GroupMatches => this.groupMatches;
-
 	public IReadOnlyList<GroupMemberViewModel> Members => this.members;
 
 	public IReadOnlyList<(ulong FreeCompanyId, string FreeCompanyName)> ActiveFreeCompanyRosterFetches
@@ -108,8 +107,9 @@ public sealed class GroupSearchService(
 					MaxRosterPages,
 					dataManager,
 					(pageEntries, resolvedFreeCompanyName) => this.ResolveEntries(
-						pageEntries, freeCompanyId, resolvedFreeCompanyName ?? freeCompanyName,
-						prefetchAvatars: false, this.disposalCts.Token),
+						pageEntries, SocialGroupKind.FreeCompany, freeCompanyId,
+						resolvedFreeCompanyName ?? freeCompanyName, fromSearchTab: false,
+						this.disposalCts.Token),
 					this.disposalCts.Token)
 				.ConfigureAwait(false);
 		}
@@ -138,6 +138,19 @@ public sealed class GroupSearchService(
 		finally
 		{
 			this.RemoveActiveRosterFetch(freeCompanyId);
+		}
+	}
+
+	internal void ApplyFetchedProfile(
+		ulong lodestoneId, LodestoneProfile profile, DateTime fetchedAtUtc)
+	{
+		foreach (var member in this.members)
+		{
+			if (member.Entry.CharacterId == lodestoneId)
+			{
+				member.Profile = profile;
+				member.ProfileFetchedAtUtc = fetchedAtUtc;
+			}
 		}
 	}
 
@@ -255,7 +268,7 @@ public sealed class GroupSearchService(
 						}
 
 						this.AppendMembers(
-							pageEntries, knownFreeCompanyId, freeCompanyName ?? knownGroupName,
+							pageEntries, kind, knownFreeCompanyId, freeCompanyName ?? knownGroupName,
 							cancellationToken);
 					},
 					cancellationToken)
@@ -290,20 +303,23 @@ public sealed class GroupSearchService(
 
 	private void AppendMembers(
 		IReadOnlyList<MemberListEntry> entries,
+		SocialGroupKind kind,
 		ulong? knownFreeCompanyId,
 		string? knownFreeCompanyName,
 		CancellationToken cancellationToken)
 	{
 		var resolved = this.ResolveEntries(
-			entries, knownFreeCompanyId, knownFreeCompanyName, prefetchAvatars: true, cancellationToken);
+			entries, kind, knownFreeCompanyId, knownFreeCompanyName, fromSearchTab: true,
+			cancellationToken);
 		this.members = this.members.Concat(resolved).ToArray();
 	}
 
 	private List<GroupMemberViewModel> ResolveEntries(
 		IReadOnlyList<MemberListEntry> entries,
+		SocialGroupKind kind,
 		ulong? knownFreeCompanyId,
 		string? knownFreeCompanyName,
-		bool prefetchAvatars,
+		bool fromSearchTab,
 		CancellationToken cancellationToken)
 	{
 		var stopwatch = Stopwatch.StartNew();
@@ -332,7 +348,6 @@ public sealed class GroupSearchService(
 				viewModel.Profile = LodestoneProfile.BuildPartial(
 					entry.CharacterId, entry.Name, entry.HomeWorldId, entry.AvatarUrlHash,
 					entry.FreeCompanyId, entry.FreeCompanyName, entry.JobId, entry.Level, isPrivate: false);
-				viewModel.ProfileState = MemberProfileState.Loaded;
 				collected.Add(viewModel);
 				continue;
 			}
@@ -376,8 +391,7 @@ public sealed class GroupSearchService(
 					or NearbyLookupState.Error,
 			} unresolved)
 			{
-				characterDirectory.SetLookupResult(
-					unresolved.Data.ContentId, entry.CharacterId, NearbyLookupState.Found, null);
+				this.ResolveMatchedMember(unresolved.Data.ContentId, entry.CharacterId, kind);
 				viewModel.KnownCharacter = characterDirectory.TryGetByContentId(unresolved.Data.ContentId);
 			}
 
@@ -387,28 +401,19 @@ public sealed class GroupSearchService(
 			viewModel.IsConflicted =
 				viewModel.KnownCharacter?.LookupState == NearbyLookupState.ConflictHold;
 
-			if (viewModel.KnownCharacter is { LookupState: NearbyLookupState.AccessRestricted })
+			if ((viewModel.IsPinned || viewModel.KnownCharacter != null) &&
+				!this.TryApplyCachedProfile(viewModel, cacheKey) &&
+				!(viewModel.IsPinned && this.TryApplyPinnedSnapshot(viewModel)))
 			{
-				if (!this.TryApplyCachedProfile(viewModel, cacheKey))
-				{
-					viewModel.Profile = LodestoneProfile.BuildPartial(
-						entry.CharacterId, entry.Name, entry.HomeWorldId, entry.AvatarUrlHash,
-						entry.FreeCompanyId, entry.FreeCompanyName, entry.JobId, entry.Level, isPrivate: true);
-					viewModel.ProfileState = MemberProfileState.Loaded;
-				}
-			}
-			else if (viewModel.IsPinned || viewModel.KnownCharacter is { LookupState: NearbyLookupState.Found })
-			{
-				if (!this.TryApplyCachedProfile(viewModel, cacheKey))
-				{
-					viewModel.ProfileState = MemberProfileState.Fetching;
-					_ = this.FetchMemberProfileAsync(viewModel, cacheKey);
-				}
+				viewModel.Profile = LodestoneProfile.BuildPartial(
+					entry.CharacterId, entry.Name, entry.HomeWorldId, entry.AvatarUrlHash,
+					entry.FreeCompanyId, entry.FreeCompanyName, entry.JobId, entry.Level,
+					viewModel.KnownCharacter?.LookupState == NearbyLookupState.AccessRestricted);
 			}
 
 			collected.Add(viewModel);
 
-			if (prefetchAvatars)
+			if (fromSearchTab)
 			{
 				var worldName = GameDataResolver.ResolveWorldName(dataManager, entry.HomeWorldId);
 				if (AvatarUrlBuilder.Build(entry.AvatarUrlHash, worldName) is { } prefetchUrl)
@@ -437,78 +442,37 @@ public sealed class GroupSearchService(
 
 		viewModel.Profile = cached.Value.Profile;
 		viewModel.ProfileFetchedAtUtc = cached.Value.FetchedAtUtc;
-		viewModel.ProfileState = MemberProfileState.Loaded;
 		return true;
 	}
 
-	private async Task FetchMemberProfileAsync(GroupMemberViewModel member, string cacheKey)
+	private bool TryApplyPinnedSnapshot(GroupMemberViewModel viewModel)
 	{
-		try
+		var snapshot = lodestoneCache.TryGetPinnedProfileSnapshot(viewModel.Entry.CharacterId);
+		if (snapshot == null)
 		{
-			var profile = await client
-				.GetProfileAsync(member.Entry.CharacterId, dataManager, this.disposalCts.Token)
-				.ConfigureAwait(false);
-
-			profile = profile with
-			{
-				JobId = member.Entry.JobId,
-				Level = member.Entry.Level,
-				FreeCompanyId = member.Entry.FreeCompanyId ?? profile.FreeCompanyId,
-				FreeCompanyName = member.Entry.FreeCompanyName ?? profile.FreeCompanyName,
-			};
-
-			var fetchedAtUtc = DateTime.UtcNow;
-			var saved = lodestoneCache.SaveCachedProfile(cacheKey, profile, fetchedAtUtc);
-
-			if (saved)
-			{
-				member.Profile = profile;
-				member.ProfileFetchedAtUtc = fetchedAtUtc;
-				if (member.KnownCharacter is { } known)
-				{
-					freeCompanyIdIndex.Record(
-						known.Data.FreeCompanyTag, known.Data.HomeWorldId, profile.FreeCompanyId,
-						profile.FreeCompanyName);
-				}
-			}
-			else
-			{
-				log.Warning(ProfileRegressionGuard.LogMessage(member.Entry.Name));
-			}
-
-			this.LinkKnownCharacter(member, NearbyLookupState.Found);
-
-			member.ProfileState = MemberProfileState.Loaded;
+			return false;
 		}
-		catch (OperationCanceledException)
-		{
-			member.ProfileState = MemberProfileState.NotPinned;
-		}
-		catch (LodestoneNotFoundException)
-		{
-			member.ProfileState = MemberProfileState.NotFound;
-		}
-		catch (LodestoneAccessRestrictedException)
-		{
-			this.LinkKnownCharacter(member, NearbyLookupState.AccessRestricted);
-			member.ProfileState = MemberProfileState.AccessRestricted;
-		}
-		catch (Exception ex)
-		{
-			log.Error(ex, "Failed to fetch a Search tab member's profile.");
-			member.ErrorMessage = ex.Message;
-			member.ProfileState = MemberProfileState.Error;
-		}
+
+		viewModel.Profile = snapshot.Profile;
+		viewModel.ProfileFetchedAtUtc = snapshot.FetchedAtUtc;
+		return true;
 	}
 
-	private void LinkKnownCharacter(GroupMemberViewModel member, NearbyLookupState state)
+	private void ResolveMatchedMember(ulong contentId, ulong lodestoneId, SocialGroupKind kind)
 	{
-		if (member.KnownCharacter is not { } known)
+		if (kind == SocialGroupKind.PvpTeam)
 		{
+			characterDirectory.SetLookupResult(
+				contentId, lodestoneId, NearbyLookupState.Pending, null, clearOverride: false,
+				priorityAtUtc: DateTime.UtcNow);
 			return;
 		}
 
-		characterDirectory.SetLookupResult(known.Data.ContentId, member.Entry.CharacterId, state, null);
+		if (!characterDirectory.HoldIfLodestoneIdTaken(contentId, lodestoneId, DateTime.UtcNow))
+		{
+			characterDirectory.SetLookupResult(
+				contentId, lodestoneId, NearbyLookupState.Found, null);
+		}
 	}
 
 	#endregion
