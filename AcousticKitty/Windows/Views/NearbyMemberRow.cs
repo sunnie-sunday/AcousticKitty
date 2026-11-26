@@ -20,6 +20,7 @@ internal static class NearbyMemberRow
 		var data = member.KnownCharacter.Data;
 		var showsOverride = member.KnownCharacter.LookupState != NearbyLookupState.Found
 			&& member.KnownCharacter.LookupState != NearbyLookupState.AccessRestricted
+			&& member.KnownCharacter.LookupState != NearbyLookupState.Deleted
 			&& !member.IsConflicted;
 
 		var primaryLine = ProfileView.FormatPrimaryLine(
@@ -33,6 +34,8 @@ internal static class NearbyMemberRow
 				"This character is hidden from search results.",
 			NearbyLookupState.AccessRestricted =>
 				"This character's profile is private.",
+			NearbyLookupState.Deleted =>
+				"This character's profile was deleted.",
 			NearbyLookupState.Pending when member.KnownCharacter.LookupErrorMessage != null =>
 				$"Last attempt failed, will retry: {member.KnownCharacter.LookupErrorMessage}",
 			NearbyLookupState.Error =>

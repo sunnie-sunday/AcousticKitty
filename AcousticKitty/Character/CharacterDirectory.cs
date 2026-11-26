@@ -58,7 +58,8 @@ public sealed partial class CharacterDirectory : IDisposable
 			{
 				var row = this.connection.Table<KnownCharacterRow>()
 					.FirstOrDefault(r => r.NameWorldKey == nameWorldKey &&
-						r.LookupState != (int)NearbyLookupState.Transferred);
+						r.LookupState != (int)NearbyLookupState.Transferred &&
+						r.LookupState != (int)NearbyLookupState.Deleted);
 				return row == null ? null : ToKnownCharacter(row);
 			},
 			null);
@@ -70,7 +71,8 @@ public sealed partial class CharacterDirectory : IDisposable
 				var except = (long)exceptContentId;
 				var row = this.connection.Table<KnownCharacterRow>()
 					.FirstOrDefault(r => r.NameWorldKey == nameWorldKey && r.ContentId != except &&
-						r.LookupState != (int)NearbyLookupState.Transferred);
+						r.LookupState != (int)NearbyLookupState.Transferred &&
+						r.LookupState != (int)NearbyLookupState.Deleted);
 				return row == null ? null : ToKnownCharacter(row);
 			},
 			null);
@@ -253,20 +255,22 @@ public sealed partial class CharacterDirectory : IDisposable
 			},
 			Array.Empty<KnownCharacter>());
 
-	public int CountFoundOrAccessRestricted() =>
+	public int CountMatched() =>
 		this.Read(
 			() => this.connection.Table<KnownCharacterRow>()
 				.Count(row =>
 					row.LookupState == (int)NearbyLookupState.Found ||
-					row.LookupState == (int)NearbyLookupState.AccessRestricted),
+					row.LookupState == (int)NearbyLookupState.AccessRestricted ||
+					row.LookupState == (int)NearbyLookupState.Deleted),
 			0);
 
-	public IReadOnlyList<KnownCharacter> GetFoundOrAccessRestricted() =>
+	public IReadOnlyList<KnownCharacter> GetMatched() =>
 		this.Read<IReadOnlyList<KnownCharacter>>(
 			() => this.connection.Table<KnownCharacterRow>()
 				.Where(row =>
 					row.LookupState == (int)NearbyLookupState.Found ||
-					row.LookupState == (int)NearbyLookupState.AccessRestricted)
+					row.LookupState == (int)NearbyLookupState.AccessRestricted ||
+					row.LookupState == (int)NearbyLookupState.Deleted)
 				.OrderBy(row => row.LastSeenUtc)
 				.Select(ToKnownCharacter)
 				.ToArray(),

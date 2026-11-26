@@ -122,7 +122,9 @@ public sealed class DatabaseOverviewService(
 			.ToList();
 		var nameWorldKeys = pins
 			.Zip(cacheKeys)
-			.Where(pair => pair.First.Known is not { LookupState: NearbyLookupState.Transferred })
+			.Where(pair => pair.First.Known is not {
+				LookupState: NearbyLookupState.Transferred or NearbyLookupState.Deleted,
+			})
 			.Select(pair => pair.Second)
 			.Distinct()
 			.ToList();
@@ -139,8 +141,11 @@ public sealed class DatabaseOverviewService(
 			{
 				var (pin, known, cacheKey) = row;
 				var isTransferred = known is { LookupState: NearbyLookupState.Transferred };
-				var cached = isTransferred ? null : cachedProfilesByKey.GetValueOrDefault(cacheKey);
-				var resolved = isTransferred ? null : resolvedByKey.GetValueOrDefault(cacheKey);
+				var usesSnapshot = known is {
+					LookupState: NearbyLookupState.Transferred or NearbyLookupState.Deleted,
+				};
+				var cached = usesSnapshot ? null : cachedProfilesByKey.GetValueOrDefault(cacheKey);
+				var resolved = usesSnapshot ? null : resolvedByKey.GetValueOrDefault(cacheKey);
 				var name = known?.Data.Name ?? resolved?.Name ?? pin.Name;
 				var homeWorldId =
 					known?.Data.HomeWorldId ?? resolved?.HomeWorldId ?? pin.HomeWorldId;
@@ -153,7 +158,7 @@ public sealed class DatabaseOverviewService(
 				Lazy<LodestoneProfile>? profile;
 				DateTime? profileFetchedAtUtc;
 				string? avatarUrlHash;
-				if (isTransferred)
+				if (usesSnapshot)
 				{
 					var snapshot = lodestoneCache.TryGetPinnedProfileSnapshot(pin.LodestoneId);
 					profile = snapshot is { } s ? new Lazy<LodestoneProfile>(() => s.Profile) : null;
@@ -211,6 +216,12 @@ public sealed class DatabaseOverviewService(
 					GameDataResolver.ResolveDataCenterName(dataManager, known.Data.HomeWorldId);
 				cachedProfilesByKey.TryGetValue(cacheKey, out var cached);
 				resolvedByKey.TryGetValue(cacheKey, out var resolved);
+				if (known.LookupState == NearbyLookupState.Deleted &&
+					resolved?.LodestoneId != known.LodestoneId)
+				{
+					cached = null;
+					resolved = null;
+				}
 
 				var (profile, profileFetchedAtUtc) = LodestoneProfile.ResolveOrPartial(
 					cached, resolved, known.LookupState == NearbyLookupState.AccessRestricted);

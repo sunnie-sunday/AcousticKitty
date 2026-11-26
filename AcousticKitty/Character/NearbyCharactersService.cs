@@ -335,12 +335,11 @@ public sealed partial class NearbyCharactersService : IDisposable
 			this.echoList.IsPinned(priorHolder.Data.ContentId, priorHolder.LodestoneId);
 		if (priorIsPinned)
 		{
-			var (profile, fetchedAtUtc) = this.lodestoneCache.ResolveProfileOrPartial(
-				nameWorldKey, priorHolder.LookupState == NearbyLookupState.AccessRestricted);
-			if (profile != null && priorHolder.LodestoneId != null)
+			if (priorHolder.LodestoneId is { } priorLodestoneId)
 			{
-				this.lodestoneCache.SavePinnedProfileSnapshot(
-					priorHolder.LodestoneId!.Value, profile, fetchedAtUtc);
+				this.SavePinnedSnapshot(
+					priorLodestoneId, nameWorldKey,
+					priorHolder.LookupState == NearbyLookupState.AccessRestricted);
 			}
 
 			this.characterDirectory.SetLookupResult(
@@ -510,6 +509,12 @@ public sealed partial class NearbyCharactersService : IDisposable
 				{
 					isPrivate = true;
 				}
+				catch (LodestoneNotFoundException) when (
+					this.echoList.IsPinned(contentId, overrideId))
+				{
+					this.MarkDeleted(known, overrideId);
+					return;
+				}
 
 				if (profile != null &&
 					(profile.Name != known.Data.Name ||
@@ -593,6 +598,10 @@ public sealed partial class NearbyCharactersService : IDisposable
 					this.characterDirectory.SetLookupResult(
 						contentId, lodestoneId, NearbyLookupState.AccessRestricted, null);
 				}
+				catch (LodestoneNotFoundException)
+				{
+					this.MarkDeleted(known, lodestoneId.Value);
+				}
 				catch (Exception ex) when (ex is not OperationCanceledException)
 				{
 					this.log.Warning(
@@ -655,10 +664,44 @@ public sealed partial class NearbyCharactersService : IDisposable
 		}
 		catch (LodestoneNotFoundException)
 		{
+			if (this.characterDirectory.TryGetByLodestoneId(cachedId) is {
+				LookupState: NearbyLookupState.Found or NearbyLookupState.AccessRestricted,
+			} owner)
+			{
+				this.MarkDeleted(owner, cachedId);
+			}
+			else if (this.echoList.IsPinnedLodestoneId(cachedId))
+			{
+				this.SavePinnedSnapshot(cachedId, cacheKey, isPrivate: false);
+			}
 		}
 
 		this.lodestoneCache.DeleteCharacters(new[] { cacheKey });
 		return (null, null, false);
+	}
+
+	private void MarkDeleted(KnownCharacter known, ulong lodestoneId)
+	{
+		if (this.echoList.IsPinned(known.Data.ContentId, lodestoneId))
+		{
+			this.SavePinnedSnapshot(
+				lodestoneId, CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId),
+				known.LookupState == NearbyLookupState.AccessRestricted);
+		}
+
+		this.characterDirectory.SetLookupResult(
+			known.Data.ContentId, lodestoneId, NearbyLookupState.Deleted, null);
+		this.log.Information($"{known.Data.Name} was deleted from The Lodestone ({lodestoneId}).");
+	}
+
+	private void SavePinnedSnapshot(ulong lodestoneId, string cacheKey, bool isPrivate)
+	{
+		var (profile, fetchedAtUtc) =
+			this.lodestoneCache.ResolveProfileOrPartial(cacheKey, isPrivate);
+		if (profile != null)
+		{
+			this.lodestoneCache.SavePinnedProfileSnapshot(lodestoneId, profile, fetchedAtUtc);
+		}
 	}
 
 	private void QueuePinnedFetchIfUnresolved(ulong contentId, DateTime scanUtc)
