@@ -22,12 +22,8 @@ namespace AcousticKitty.Character;
 public sealed partial class NearbyCharactersService : IDisposable
 {
 	private static readonly TimeSpan ScanInterval = TimeSpan.FromSeconds(10);
-
 	private static readonly TimeSpan QueueRebuildInterval = TimeSpan.FromSeconds(1);
-
 	private static readonly TimeSpan PeriodicUpkeepInterval = TimeSpan.FromMinutes(15);
-	private static readonly TimeSpan ReuseHoldDuration = TimeSpan.FromHours(72);
-
 	private static readonly TimeSpan NoWorkPollInterval = TimeSpan.FromSeconds(1);
 
 	private const int MaxQueueSnapshotSize = 5_000;
@@ -363,7 +359,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 		this.lodestoneCache.DeleteCharacters(new[] { nameWorldKey });
 		this.characterDirectory.SetLookupResult(
 			data.ContentId, null, NearbyLookupState.ConflictHold, null,
-			priorityAtUtc: nowUtc + ReuseHoldDuration);
+			priorityAtUtc: nowUtc + CharacterDirectory.ReuseHoldDuration);
 	}
 
 	private void RebuildQueueSnapshot()
@@ -536,12 +532,9 @@ public sealed partial class NearbyCharactersService : IDisposable
 				lodestoneId = searchEntry.CharacterId;
 			}
 
-			if (this.characterDirectory.TryGetByLodestoneId(lodestoneId.Value) is { } owner &&
-				owner.Data.ContentId != contentId)
+			if (this.characterDirectory.HoldIfLodestoneIdTaken(
+				contentId, lodestoneId.Value, DateTime.UtcNow))
 			{
-				this.characterDirectory.SetLookupResult(
-					contentId, null, NearbyLookupState.ConflictHold, null,
-					priorityAtUtc: DateTime.UtcNow + ReuseHoldDuration);
 				return;
 			}
 

@@ -17,8 +17,9 @@ namespace AcousticKitty.Character;
 public sealed partial class CharacterDirectory : IDisposable
 {
 	private const int MaxConsecutiveLookupFailures = 5;
-
 	private const int BulkQueryBatchSize = 500;
+
+	internal static readonly TimeSpan ReuseHoldDuration = TimeSpan.FromHours(72);
 
 	private readonly SQLiteConnection connection;
 	private readonly object gate = new();
@@ -78,6 +79,20 @@ public sealed partial class CharacterDirectory : IDisposable
 			"WHERE LookupState = ? AND PriorityAtUtc IS NOT NULL AND PriorityAtUtc <= ?",
 			(int)NearbyLookupState.Pending, (int)NearbyLookupState.ConflictHold,
 			UtcTimestamp.Format(nowUtc)));
+
+	public bool HoldIfLodestoneIdTaken(ulong contentId, ulong lodestoneId, DateTime nowUtc)
+	{
+		if (this.TryGetByLodestoneId(lodestoneId) is not { } owner ||
+			owner.Data.ContentId == contentId)
+		{
+			return false;
+		}
+
+		this.SetLookupResult(
+			contentId, null, NearbyLookupState.ConflictHold, null,
+			priorityAtUtc: nowUtc + CharacterDirectory.ReuseHoldDuration);
+		return true;
+	}
 
 	public KnownCharacter? TryGetByLodestoneId(ulong lodestoneId) =>
 		this.Read<KnownCharacter?>(
