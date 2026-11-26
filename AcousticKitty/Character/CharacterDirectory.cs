@@ -21,6 +21,8 @@ public sealed partial class CharacterDirectory : IDisposable
 
 	internal static readonly TimeSpan ReuseHoldDuration = TimeSpan.FromHours(72);
 
+	private static readonly TimeSpan RecheckCooldown = TimeSpan.FromDays(7);
+
 	private readonly SQLiteConnection connection;
 	private readonly object gate = new();
 	private readonly IPluginLog log;
@@ -160,6 +162,11 @@ public sealed partial class CharacterDirectory : IDisposable
 			if (priorityAtUtc.HasValue)
 			{
 				row.PriorityAtUtc = UtcTimestamp.Format(priorityAtUtc.Value);
+			}
+			else if (state is NearbyLookupState.NotFound or NearbyLookupState.AccessRestricted)
+			{
+				row.PriorityAtUtc =
+					UtcTimestamp.Format(DateTime.UtcNow + CharacterDirectory.RecheckCooldown);
 			}
 
 			if (clearOverride)
@@ -379,6 +386,12 @@ public sealed partial class CharacterDirectory : IDisposable
 		row.Customize = data.Customize;
 		row.LastSeenUtc = UtcTimestamp.Format(lastSeenUtc);
 
+		if (existing != null && CharacterDirectory.IsRecheckDue(existing, lastSeenUtc))
+		{
+			row.LookupState = (int)NearbyLookupState.Pending;
+			row.PriorityAtUtc = null;
+		}
+
 		if (existing == null)
 		{
 			this.connection.Insert(row);
@@ -388,6 +401,11 @@ public sealed partial class CharacterDirectory : IDisposable
 			this.connection.Update(row);
 		}
 	}
+
+	private static bool IsRecheckDue(KnownCharacterRow row, DateTime seenUtc) =>
+		row.LookupState is (int)NearbyLookupState.NotFound
+			or (int)NearbyLookupState.AccessRestricted &&
+		(row.PriorityAtUtc == null || UtcTimestamp.Parse(row.PriorityAtUtc) <= seenUtc);
 
 	private static KnownCharacter ToKnownCharacter(KnownCharacterRow row) => new(
 		new PlayerLocalData(

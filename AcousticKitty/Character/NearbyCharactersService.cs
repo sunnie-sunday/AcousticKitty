@@ -500,10 +500,20 @@ public sealed partial class NearbyCharactersService : IDisposable
 			var isPrivate = false;
 			if (overrideLodestoneId is { } overrideId)
 			{
-				profile = await this.client
-					.GetProfileAsync(overrideId, this.dataManager, cancellationToken)
-					.ConfigureAwait(false);
-				if (profile.Name != known.Data.Name || profile.HomeWorldId != known.Data.HomeWorldId)
+				try
+				{
+					profile = await this.client
+						.GetProfileAsync(overrideId, this.dataManager, cancellationToken)
+						.ConfigureAwait(false);
+				}
+				catch (LodestoneAccessRestrictedException)
+				{
+					isPrivate = true;
+				}
+
+				if (profile != null &&
+					(profile.Name != known.Data.Name ||
+						profile.HomeWorldId != known.Data.HomeWorldId))
 				{
 					this.MarkHidden(known);
 					return;
