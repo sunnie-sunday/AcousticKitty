@@ -497,6 +497,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 		{
 			MemberListEntry? searchEntry = null;
 			LodestoneProfile? profile = null;
+			var isPrivate = false;
 			if (overrideLodestoneId is { } overrideId)
 			{
 				profile = await this.client
@@ -516,9 +517,12 @@ public sealed partial class NearbyCharactersService : IDisposable
 			}
 			else if (this.lodestoneCache.TryGetResolvedId(cacheKey) is { } cachedId)
 			{
-				lodestoneId = cachedId;
+				(lodestoneId, profile, isPrivate) = await this
+					.VerifyCachedIdAsync(cachedId, known, cacheKey, cancellationToken)
+					.ConfigureAwait(false);
 			}
-			else
+
+			if (lodestoneId == null)
 			{
 				searchEntry = await this.client
 					.SearchCharacterAsync(known.Data.Name, worldName, this.dataManager, cancellationToken)
@@ -543,7 +547,9 @@ public sealed partial class NearbyCharactersService : IDisposable
 				searchEntry?.AvatarUrlHash, searchEntry?.Level, searchEntry?.JobId,
 				searchEntry?.FreeCompanyId, searchEntry?.FreeCompanyName);
 
-			this.characterDirectory.SetLookupResult(contentId, lodestoneId, NearbyLookupState.Found, null);
+			this.characterDirectory.SetLookupResult(
+				contentId, lodestoneId,
+				isPrivate ? NearbyLookupState.AccessRestricted : NearbyLookupState.Found, null);
 
 			if (searchEntry != null)
 			{
@@ -551,46 +557,38 @@ public sealed partial class NearbyCharactersService : IDisposable
 					known.Data.FreeCompanyTag, known.Data.HomeWorldId, searchEntry.FreeCompanyId,
 					searchEntry.FreeCompanyName);
 			}
-
-			try
+			else if (!isPrivate)
 			{
-				profile ??= await this.client
-					.GetProfileAsync(lodestoneId.Value, this.dataManager, cancellationToken)
-					.ConfigureAwait(false);
-
-				if (searchEntry != null)
+				try
 				{
-					profile = profile with
+					profile ??= await this.client
+						.GetProfileAsync(lodestoneId.Value, this.dataManager, cancellationToken)
+						.ConfigureAwait(false);
+
+					var saved =
+						this.lodestoneCache.SaveCachedProfile(cacheKey, profile, DateTime.UtcNow);
+					if (saved)
 					{
-						JobId = searchEntry.JobId,
-						Level = searchEntry.Level,
-						FreeCompanyId = searchEntry.FreeCompanyId ?? profile.FreeCompanyId,
-						FreeCompanyName = searchEntry.FreeCompanyName ?? profile.FreeCompanyName,
-					};
+						this.freeCompanyIdIndex.Record(
+							known.Data.FreeCompanyTag, known.Data.HomeWorldId, profile.FreeCompanyId,
+							profile.FreeCompanyName);
+					}
+					else
+					{
+						this.log.Warning(ProfileRegressionGuard.LogMessage(known.Data.Name));
+					}
 				}
-
-				var saved = this.lodestoneCache.SaveCachedProfile(cacheKey, profile, DateTime.UtcNow);
-				if (saved)
+				catch (LodestoneAccessRestrictedException)
 				{
-					this.freeCompanyIdIndex.Record(
-						known.Data.FreeCompanyTag, known.Data.HomeWorldId, profile.FreeCompanyId,
-						profile.FreeCompanyName);
+					this.characterDirectory.SetLookupResult(
+						contentId, lodestoneId, NearbyLookupState.AccessRestricted, null);
 				}
-				else
+				catch (Exception ex) when (ex is not OperationCanceledException)
 				{
-					this.log.Warning(ProfileRegressionGuard.LogMessage(known.Data.Name));
+					this.log.Warning(
+						$"Failed to update {known.Data.Name}'s cached Lodestone profile: " +
+						$"{ex.GetType()}: {ex.Message}");
 				}
-			}
-			catch (LodestoneAccessRestrictedException)
-			{
-				this.characterDirectory.SetLookupResult(
-					contentId, lodestoneId, NearbyLookupState.AccessRestricted, null);
-			}
-			catch (Exception ex) when (ex is not OperationCanceledException)
-			{
-				this.log.Warning(
-					$"Failed to update {known.Data.Name}'s cached Lodestone profile: " +
-					$"{ex.GetType()}: {ex.Message}");
 			}
 
 			if (this.echoList.IsPinned(contentId, lodestoneId))
@@ -624,6 +622,33 @@ public sealed partial class NearbyCharactersService : IDisposable
 			this.activeContentIdOrZero = 0;
 			this.RebuildQueueSnapshot();
 		}
+	}
+
+	private async Task<(ulong? LodestoneId, LodestoneProfile? Profile, bool IsPrivate)>
+		VerifyCachedIdAsync(
+			ulong cachedId, KnownCharacter known, string cacheKey,
+			CancellationToken cancellationToken)
+	{
+		try
+		{
+			var profile = await this.client
+				.GetProfileAsync(cachedId, this.dataManager, cancellationToken)
+				.ConfigureAwait(false);
+			if (profile.Name == known.Data.Name && profile.HomeWorldId == known.Data.HomeWorldId)
+			{
+				return (cachedId, profile, false);
+			}
+		}
+		catch (LodestoneAccessRestrictedException)
+		{
+			return (cachedId, null, true);
+		}
+		catch (LodestoneNotFoundException)
+		{
+		}
+
+		this.lodestoneCache.DeleteCharacters(new[] { cacheKey });
+		return (null, null, false);
 	}
 
 	private void QueuePinnedFetchIfUnresolved(ulong contentId, DateTime scanUtc)
