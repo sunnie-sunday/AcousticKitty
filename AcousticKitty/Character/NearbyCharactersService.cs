@@ -527,6 +527,22 @@ public sealed partial class NearbyCharactersService : IDisposable
 			}
 			else if (known.LodestoneId is { } existingId)
 			{
+				try
+				{
+					profile = await this.client
+						.GetProfileAsync(existingId, this.dataManager, cancellationToken)
+						.ConfigureAwait(false);
+				}
+				catch (LodestoneAccessRestrictedException)
+				{
+					isPrivate = true;
+				}
+				catch (LodestoneNotFoundException)
+				{
+					this.MarkDeleted(known, existingId);
+					return;
+				}
+
 				lodestoneId = existingId;
 			}
 			else if (this.lodestoneCache.TryGetResolvedId(cacheKey) is { } cachedId)
@@ -571,44 +587,19 @@ public sealed partial class NearbyCharactersService : IDisposable
 					known.Data.FreeCompanyTag, known.Data.HomeWorldId, searchEntry.FreeCompanyId,
 					searchEntry.FreeCompanyName);
 			}
-			else if (!isPrivate)
+			else if (profile != null)
 			{
-				try
+				var fetchedAtUtc = DateTime.UtcNow;
+				if (this.lodestoneCache.SaveCachedProfile(cacheKey, profile, fetchedAtUtc))
 				{
-					profile ??= await this.client
-						.GetProfileAsync(lodestoneId.Value, this.dataManager, cancellationToken)
-						.ConfigureAwait(false);
-
-					var fetchedAtUtc = DateTime.UtcNow;
-					var saved =
-						this.lodestoneCache.SaveCachedProfile(cacheKey, profile, fetchedAtUtc);
-					if (saved)
-					{
-						this.groupSearch.ApplyFetchedProfile(
-							lodestoneId.Value, profile, fetchedAtUtc);
-						this.freeCompanyIdIndex.Record(
-							known.Data.FreeCompanyTag, known.Data.HomeWorldId, profile.FreeCompanyId,
-							profile.FreeCompanyName);
-					}
-					else
-					{
-						this.log.Warning(ProfileRegressionGuard.LogMessage(known.Data.Name));
-					}
+					this.groupSearch.ApplyFetchedProfile(lodestoneId.Value, profile, fetchedAtUtc);
+					this.freeCompanyIdIndex.Record(
+						known.Data.FreeCompanyTag, known.Data.HomeWorldId, profile.FreeCompanyId,
+						profile.FreeCompanyName);
 				}
-				catch (LodestoneAccessRestrictedException)
+				else
 				{
-					this.characterDirectory.SetLookupResult(
-						contentId, lodestoneId, NearbyLookupState.AccessRestricted, null);
-				}
-				catch (LodestoneNotFoundException)
-				{
-					this.MarkDeleted(known, lodestoneId.Value);
-				}
-				catch (Exception ex) when (ex is not OperationCanceledException)
-				{
-					this.log.Warning(
-						$"Failed to update {known.Data.Name}'s cached Lodestone profile: " +
-						$"{ex.GetType()}: {ex.Message}");
+					this.log.Warning(ProfileRegressionGuard.LogMessage(known.Data.Name));
 				}
 			}
 
