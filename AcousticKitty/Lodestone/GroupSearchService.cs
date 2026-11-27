@@ -33,8 +33,9 @@ public sealed class GroupSearchService(
 	private readonly CancellationTokenSource disposalCts = new();
 	private readonly object forceSearchGate = new();
 	private readonly HashSet<ulong> forceSearchedFreeCompanyIds = new();
+	private readonly SemaphoreSlim forceResolveGate = new(1, 1);
 	private readonly object activeRosterFetchesGate = new();
-	private readonly Dictionary<ulong, string> activeRosterFetches = new();
+	private readonly OrderedDictionary<ulong, string> activeRosterFetches = new();
 
 	private volatile GroupSearchState state = GroupSearchState.Idle;
 	private string? errorMessage;
@@ -100,18 +101,27 @@ public sealed class GroupSearchService(
 		this.AddActiveRosterFetch(freeCompanyId, freeCompanyName);
 		try
 		{
-			await client
-				.GetGroupRosterAsync(
-					SocialGroupKind.FreeCompany,
-					freeCompanyId.ToString(CultureInfo.InvariantCulture),
-					MaxRosterPages,
-					dataManager,
-					(pageEntries, resolvedFreeCompanyName) => this.ResolveEntries(
-						pageEntries, SocialGroupKind.FreeCompany, freeCompanyId,
-						resolvedFreeCompanyName ?? freeCompanyName, fromSearchTab: false,
-						this.disposalCts.Token),
-					this.disposalCts.Token)
-				.ConfigureAwait(false);
+			await this.forceResolveGate.WaitAsync(this.disposalCts.Token).ConfigureAwait(false);
+			try
+			{
+				await client
+					.GetGroupRosterAsync(
+						SocialGroupKind.FreeCompany,
+						freeCompanyId.ToString(CultureInfo.InvariantCulture),
+						MaxRosterPages,
+						dataManager,
+						(pageEntries, resolvedFreeCompanyName) => this.ResolveEntries(
+							pageEntries, SocialGroupKind.FreeCompany, freeCompanyId,
+							resolvedFreeCompanyName ?? freeCompanyName, fromSearchTab: false,
+							this.disposalCts.Token),
+						highPriority: false,
+						this.disposalCts.Token)
+					.ConfigureAwait(false);
+			}
+			finally
+			{
+				this.forceResolveGate.Release();
+			}
 		}
 		catch (OperationCanceledException)
 		{
@@ -271,6 +281,7 @@ public sealed class GroupSearchService(
 							pageEntries, kind, knownFreeCompanyId, freeCompanyName ?? knownGroupName,
 							cancellationToken);
 					},
+					highPriority: true,
 					cancellationToken)
 				.ConfigureAwait(false);
 		}

@@ -49,6 +49,7 @@ public interface ILodestoneClient
 		int maxPages,
 		IDataManager dataManager,
 		Action<IReadOnlyList<MemberListEntry>, string?> onPageFetched,
+		bool highPriority,
 		CancellationToken cancellationToken);
 
 	Task<byte[]> GetAvatarBytesAsync(string avatarUrl, bool highPriority, CancellationToken cancellationToken);
@@ -146,10 +147,11 @@ public sealed class LodestoneClient(IPluginLog log)
 		int maxPages,
 		IDataManager dataManager,
 		Action<IReadOnlyList<MemberListEntry>, string?> onPageFetched,
+		bool highPriority,
 		CancellationToken cancellationToken)
 	{
 		var firstPageHtml = await this
-			.GetGroupMemberPageHtmlAsync(kind, groupId, 1, cancellationToken)
+			.GetGroupMemberPageHtmlAsync(kind, groupId, 1, highPriority, cancellationToken)
 			.ConfigureAwait(false);
 
 		var freeCompanyName = kind == SocialGroupKind.FreeCompany
@@ -164,7 +166,7 @@ public sealed class LodestoneClient(IPluginLog log)
 		for (var page = 2; page <= totalPages; page++)
 		{
 			var html = await this
-				.GetGroupMemberPageHtmlAsync(kind, groupId, page, cancellationToken)
+				.GetGroupMemberPageHtmlAsync(kind, groupId, page, highPriority, cancellationToken)
 				.ConfigureAwait(false);
 			var pageMembers = LodestoneParser.ParseMemberListEntries(dataManager, html);
 			members.AddRange(pageMembers);
@@ -178,12 +180,13 @@ public sealed class LodestoneClient(IPluginLog log)
 		SocialGroupKind kind,
 		string groupId,
 		int page,
+		bool highPriority,
 		CancellationToken cancellationToken)
 	{
 		var memberSegment = kind == SocialGroupKind.FreeCompany ? "member/" : string.Empty;
 		var url = $"https://{Host}/lodestone/{GetGroupUrlSegment(kind)}/{groupId}/" +
 			$"{memberSegment}?page={page}";
-		return this.GetStringAsync(url, this.rosterRateLimiter, cancellationToken);
+		return this.GetStringAsync(url, this.rosterRateLimiter, cancellationToken, highPriority);
 	}
 
 	public async Task<byte[]> GetAvatarBytesAsync(
@@ -221,9 +224,11 @@ public sealed class LodestoneClient(IPluginLog log)
 	};
 
 	private async Task<string> GetStringAsync(
-		string url, RateLimiter rateLimiter, CancellationToken cancellationToken)
+		string url, RateLimiter rateLimiter, CancellationToken cancellationToken,
+		bool highPriority = true)
 	{
-		await this.WaitForRequestSlotAsync(rateLimiter, cancellationToken).ConfigureAwait(false);
+		await this.WaitForRequestSlotAsync(rateLimiter, highPriority, cancellationToken)
+			.ConfigureAwait(false);
 		try
 		{
 			var body = await this.SendAsync(url, cancellationToken).ConfigureAwait(false);
@@ -238,7 +243,7 @@ public sealed class LodestoneClient(IPluginLog log)
 	}
 
 	private async Task WaitForRequestSlotAsync(
-		RateLimiter rateLimiter, CancellationToken cancellationToken)
+		RateLimiter rateLimiter, bool highPriority, CancellationToken cancellationToken)
 	{
 		while (true)
 		{
@@ -249,8 +254,7 @@ public sealed class LodestoneClient(IPluginLog log)
 				continue;
 			}
 
-			await rateLimiter.WaitAsync(highPriority: true, cancellationToken)
-				.ConfigureAwait(false);
+			await rateLimiter.WaitAsync(highPriority, cancellationToken).ConfigureAwait(false);
 			if (this.GetPauseRemaining() <= TimeSpan.Zero)
 			{
 				return;
