@@ -168,7 +168,8 @@ public sealed partial class LodestoneCache : IDisposable
 		}
 	}
 
-	public void RenameCharacter(string oldKey, string newKey, string newName, uint newHomeWorldId)
+	public void RenameCharacter(
+		string oldKey, string newKey, string newName, uint newHomeWorldId, ulong lodestoneId)
 	{
 		if (oldKey == newKey)
 		{
@@ -177,14 +178,19 @@ public sealed partial class LodestoneCache : IDisposable
 
 		this.Write(() => this.connection.RunInTransaction(() =>
 		{
-			KeyedRowMigration.Migrate<ResolvedCharacterRow>(this.connection, oldKey, newKey, row =>
-			{
-				row.Key = newKey;
-				row.Name = newName;
-				row.HomeWorldId = newHomeWorldId;
-			});
+			KeyedRowMigration.Migrate<ResolvedCharacterRow>(
+				this.connection, oldKey, newKey, row => row.LodestoneId == (long)lodestoneId,
+				row =>
+				{
+					row.Key = newKey;
+					row.Name = newName;
+					row.HomeWorldId = newHomeWorldId;
+				});
 			KeyedRowMigration.Migrate<CachedProfileRow>(
-				this.connection, oldKey, newKey, row => row.Key = newKey);
+				this.connection, oldKey, newKey,
+				row => JsonSerializer.Deserialize<LodestoneProfile>(row.ProfileJson)?.LodestoneId ==
+					lodestoneId,
+				row => row.Key = newKey);
 		}));
 	}
 
