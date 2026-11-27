@@ -35,7 +35,7 @@ public static class CharacterTransferRecorder
 		var oldKey = CharacterKey.Build(oldName, oldHomeWorldId);
 		var newKey = CharacterKey.Build(newName, newHomeWorldId);
 
-		lodestoneCache.RenameCharacter(oldKey, newKey, newName, newHomeWorldId);
+		lodestoneCache.RenameCharacter(oldKey, newKey, newName, newHomeWorldId, lodestoneId.Value);
 
 		characterDirectory.SetLookupResult(
 			contentId, lodestoneId, NearbyLookupState.Pending, null, priorityAtUtc: DateTime.UtcNow);

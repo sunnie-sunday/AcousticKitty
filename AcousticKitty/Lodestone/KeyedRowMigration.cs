@@ -11,11 +11,12 @@ namespace AcousticKitty.Lodestone;
 internal static class KeyedRowMigration
 {
 	public static void Migrate<T>(
-		SQLiteConnection connection, string oldKey, string newKey, Action<T> applyNewIdentity)
+		SQLiteConnection connection, string oldKey, string newKey, Func<T, bool> isOwnRow,
+		Action<T> applyNewIdentity)
 		where T : new()
 	{
 		var row = connection.Find<T>(oldKey);
-		if (row == null)
+		if (row == null || !isOwnRow(row))
 		{
 			return;
 		}

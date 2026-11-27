@@ -10,6 +10,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using AcousticKitty.Character;
 using AcousticKitty.Common;
 using AcousticKitty.Lodestone;
 using Dalamud.Plugin.Services;
@@ -108,6 +109,7 @@ public sealed class ProfileRefresh
 {
 	private readonly ILodestoneClient client;
 	private readonly LodestoneCache lodestoneCache;
+	private readonly CharacterDirectory characterDirectory;
 	private readonly Configuration configuration;
 	private readonly string pluginVersion;
 	private readonly IDataManager dataManager;
@@ -118,6 +120,7 @@ public sealed class ProfileRefresh
 		ILodestoneClient client,
 		LodestoneCache lodestoneCache,
 		EchoList echoList,
+		CharacterDirectory characterDirectory,
 		Configuration configuration,
 		string pluginVersion,
 		IDataManager dataManager,
@@ -125,6 +128,7 @@ public sealed class ProfileRefresh
 	{
 		this.client = client;
 		this.lodestoneCache = lodestoneCache;
+		this.characterDirectory = characterDirectory;
 		this.configuration = configuration;
 		this.pluginVersion = pluginVersion;
 		this.dataManager = dataManager;
@@ -155,6 +159,20 @@ public sealed class ProfileRefresh
 				.GetProfileAsync(pin.LodestoneId, this.dataManager, cancellationToken)
 				.ConfigureAwait(false);
 			this.Save(pin, profile);
+			this.UpdateRowState(pin, NearbyLookupState.Found);
+		}
+		catch (LodestoneAccessRestrictedException)
+		{
+			this.UpdateRowState(pin, NearbyLookupState.AccessRestricted);
+		}
+		catch (LodestoneNotFoundException) when (this.TryGetPinRow(pin) is { } known)
+		{
+			this.lodestoneCache.SavePinnedProfileSnapshot(
+				pin.LodestoneId, CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId),
+				known.LookupState == NearbyLookupState.AccessRestricted);
+			this.characterDirectory.SetLookupResult(
+				known.Data.ContentId, pin.LodestoneId, NearbyLookupState.Deleted, null);
+			this.log.Information($"{pin.Name} was deleted from The Lodestone ({pin.LodestoneId}).");
 		}
 		catch (LodestoneUnavailableException)
 		{
@@ -178,6 +196,30 @@ public sealed class ProfileRefresh
 		return true;
 	}
 
+	private void UpdateRowState(PinnedCharacter pin, NearbyLookupState state)
+	{
+		if (this.TryGetPinRow(pin) is { } known &&
+			known.LookupState != state &&
+			(known.LodestoneId == null ||
+				known.LookupState is NearbyLookupState.Found or NearbyLookupState.AccessRestricted
+					or NearbyLookupState.Deleted))
+		{
+			this.characterDirectory.SetLookupResult(
+				known.Data.ContentId, pin.LodestoneId, state, null);
+		}
+	}
+
+	private KnownCharacter? TryGetPinRow(PinnedCharacter pin) =>
+		this.characterDirectory.TryGetByLodestoneId(pin.LodestoneId) ??
+		(pin.ContentId is { } contentId &&
+			this.characterDirectory.TryGetByContentId(contentId) is {
+				LodestoneId: null,
+				LookupState: NearbyLookupState.Pending or NearbyLookupState.NotFound
+					or NearbyLookupState.Error,
+			} unresolved
+				? unresolved
+				: null);
+
 	private void Save(PinnedCharacter pin, LodestoneProfile profile)
 	{
 		var key = CharacterKey.Build(profile.Name, profile.HomeWorldId);
@@ -185,7 +227,7 @@ public sealed class ProfileRefresh
 		this.lodestoneCache.SaveResolvedId(
 			key, pin.LodestoneId, profile.Name, profile.HomeWorldId, fetchedAtUtc,
 			profile.AvatarUrlHash, profile.Level, profile.JobId, profile.FreeCompanyId,
-			profile.FreeCompanyName);
+			profile.FreeCompanyName, freeCompanyKnown: !profile.IsPartiallyPrivate);
 		if (!this.lodestoneCache.SaveCachedProfile(key, profile, fetchedAtUtc))
 		{
 			this.log.Warning(ProfileRegressionGuard.LogMessage(profile.Name));

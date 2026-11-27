@@ -17,8 +17,11 @@ namespace AcousticKitty.Character;
 public sealed partial class CharacterDirectory : IDisposable
 {
 	private const int MaxConsecutiveLookupFailures = 5;
-
 	private const int BulkQueryBatchSize = 500;
+
+	internal static readonly TimeSpan ReuseHoldDuration = TimeSpan.FromHours(72);
+
+	private static readonly TimeSpan RecheckCooldown = TimeSpan.FromDays(7);
 
 	private readonly SQLiteConnection connection;
 	private readonly object gate = new();
@@ -55,7 +58,8 @@ public sealed partial class CharacterDirectory : IDisposable
 			{
 				var row = this.connection.Table<KnownCharacterRow>()
 					.FirstOrDefault(r => r.NameWorldKey == nameWorldKey &&
-						r.LookupState != (int)NearbyLookupState.Transferred);
+						r.LookupState != (int)NearbyLookupState.Transferred &&
+						r.LookupState != (int)NearbyLookupState.Deleted);
 				return row == null ? null : ToKnownCharacter(row);
 			},
 			null);
@@ -67,7 +71,8 @@ public sealed partial class CharacterDirectory : IDisposable
 				var except = (long)exceptContentId;
 				var row = this.connection.Table<KnownCharacterRow>()
 					.FirstOrDefault(r => r.NameWorldKey == nameWorldKey && r.ContentId != except &&
-						r.LookupState != (int)NearbyLookupState.Transferred);
+						r.LookupState != (int)NearbyLookupState.Transferred &&
+						r.LookupState != (int)NearbyLookupState.Deleted);
 				return row == null ? null : ToKnownCharacter(row);
 			},
 			null);
@@ -78,6 +83,20 @@ public sealed partial class CharacterDirectory : IDisposable
 			"WHERE LookupState = ? AND PriorityAtUtc IS NOT NULL AND PriorityAtUtc <= ?",
 			(int)NearbyLookupState.Pending, (int)NearbyLookupState.ConflictHold,
 			UtcTimestamp.Format(nowUtc)));
+
+	public bool HoldIfLodestoneIdTaken(ulong contentId, ulong lodestoneId, DateTime nowUtc)
+	{
+		if (this.TryGetByLodestoneId(lodestoneId) is not { } owner ||
+			owner.Data.ContentId == contentId)
+		{
+			return false;
+		}
+
+		this.SetLookupResult(
+			contentId, null, NearbyLookupState.ConflictHold, null,
+			priorityAtUtc: nowUtc + CharacterDirectory.ReuseHoldDuration);
+		return true;
+	}
 
 	public KnownCharacter? TryGetByLodestoneId(ulong lodestoneId) =>
 		this.Read<KnownCharacter?>(
@@ -146,6 +165,12 @@ public sealed partial class CharacterDirectory : IDisposable
 			{
 				row.PriorityAtUtc = UtcTimestamp.Format(priorityAtUtc.Value);
 			}
+			else if (state is NearbyLookupState.NotFound or NearbyLookupState.AccessRestricted
+				or NearbyLookupState.Deleted)
+			{
+				row.PriorityAtUtc =
+					UtcTimestamp.Format(DateTime.UtcNow + CharacterDirectory.RecheckCooldown);
+			}
 
 			if (clearOverride)
 			{
@@ -199,8 +224,6 @@ public sealed partial class CharacterDirectory : IDisposable
 			this.connection.Update(row);
 		});
 
-	public IReadOnlyList<KnownCharacter> GetPending() => this.GetPending(int.MaxValue);
-
 	public IReadOnlyList<KnownCharacter> GetPending(int limit) =>
 		this.Read<IReadOnlyList<KnownCharacter>>(
 			() =>
@@ -231,20 +254,22 @@ public sealed partial class CharacterDirectory : IDisposable
 			},
 			Array.Empty<KnownCharacter>());
 
-	public int CountFoundOrAccessRestricted() =>
+	public int CountMatched() =>
 		this.Read(
 			() => this.connection.Table<KnownCharacterRow>()
 				.Count(row =>
 					row.LookupState == (int)NearbyLookupState.Found ||
-					row.LookupState == (int)NearbyLookupState.AccessRestricted),
+					row.LookupState == (int)NearbyLookupState.AccessRestricted ||
+					row.LookupState == (int)NearbyLookupState.Deleted),
 			0);
 
-	public IReadOnlyList<KnownCharacter> GetFoundOrAccessRestricted() =>
+	public IReadOnlyList<KnownCharacter> GetMatched() =>
 		this.Read<IReadOnlyList<KnownCharacter>>(
 			() => this.connection.Table<KnownCharacterRow>()
 				.Where(row =>
 					row.LookupState == (int)NearbyLookupState.Found ||
-					row.LookupState == (int)NearbyLookupState.AccessRestricted)
+					row.LookupState == (int)NearbyLookupState.AccessRestricted ||
+					row.LookupState == (int)NearbyLookupState.Deleted)
 				.OrderBy(row => row.LastSeenUtc)
 				.Select(ToKnownCharacter)
 				.ToArray(),
@@ -255,6 +280,16 @@ public sealed partial class CharacterDirectory : IDisposable
 			() => this.connection.Table<KnownCharacterRow>()
 				.Count(row => row.LookupState == (int)NearbyLookupState.NotFound),
 			0);
+
+	public bool HasHiddenWithFreeCompanyTag(
+		string freeCompanyTag, uint homeWorldId, ulong excludedContentId) =>
+		this.Read(
+			() => this.connection.Table<KnownCharacterRow>()
+				.Where(row => row.LookupState == (int)NearbyLookupState.NotFound &&
+					row.FreeCompanyTag == freeCompanyTag && row.HomeWorldId == homeWorldId &&
+					row.ContentId != (long)excludedContentId)
+				.Count() > 0,
+			false);
 
 	public IReadOnlyList<KnownCharacter> GetHidden() =>
 		this.Read<IReadOnlyList<KnownCharacter>>(
@@ -301,6 +336,10 @@ public sealed partial class CharacterDirectory : IDisposable
 
 	public void RecordNameHistory(ulong contentId, string name, string homeWorldName, DateTime seenUntilUtc) =>
 		this.nameHistory.RecordNameHistory(contentId, name, homeWorldName, seenUntilUtc);
+
+	public void RecordPastName(
+		ulong contentId, string name, string homeWorldName, DateTime seenUntilUtc) =>
+		this.nameHistory.RecordPastName(contentId, name, homeWorldName, seenUntilUtc);
 
 	public IReadOnlyList<string> GetHistoryWorldNames(ulong contentId) =>
 		this.nameHistory.GetHistoryWorldNames(contentId);
@@ -364,6 +403,12 @@ public sealed partial class CharacterDirectory : IDisposable
 		row.Customize = data.Customize;
 		row.LastSeenUtc = UtcTimestamp.Format(lastSeenUtc);
 
+		if (existing != null && CharacterDirectory.IsRecheckDue(existing, lastSeenUtc))
+		{
+			row.LookupState = (int)NearbyLookupState.Pending;
+			row.PriorityAtUtc = null;
+		}
+
 		if (existing == null)
 		{
 			this.connection.Insert(row);
@@ -373,6 +418,11 @@ public sealed partial class CharacterDirectory : IDisposable
 			this.connection.Update(row);
 		}
 	}
+
+	private static bool IsRecheckDue(KnownCharacterRow row, DateTime seenUtc) =>
+		row.LookupState is (int)NearbyLookupState.NotFound
+			or (int)NearbyLookupState.AccessRestricted or (int)NearbyLookupState.Deleted &&
+		(row.PriorityAtUtc == null || UtcTimestamp.Parse(row.PriorityAtUtc) <= seenUtc);
 
 	private static KnownCharacter ToKnownCharacter(KnownCharacterRow row) => new(
 		new PlayerLocalData(

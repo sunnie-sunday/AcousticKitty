@@ -21,8 +21,6 @@ public sealed class DatabaseOverviewService(
 	CharacterDirectory characterDirectory,
 	IDataManager dataManager,
 	IPlayerState playerState,
-	GroupSearchService groupSearchService,
-	FreeCompanyIdIndex freeCompanyIdIndex,
 	Configuration configuration,
 	IPluginLog log)
 {
@@ -122,7 +120,9 @@ public sealed class DatabaseOverviewService(
 			.ToList();
 		var nameWorldKeys = pins
 			.Zip(cacheKeys)
-			.Where(pair => pair.First.Known is not { LookupState: NearbyLookupState.Transferred })
+			.Where(pair => pair.First.Known is not {
+				LookupState: NearbyLookupState.Transferred or NearbyLookupState.Deleted,
+			})
 			.Select(pair => pair.Second)
 			.Distinct()
 			.ToList();
@@ -139,8 +139,11 @@ public sealed class DatabaseOverviewService(
 			{
 				var (pin, known, cacheKey) = row;
 				var isTransferred = known is { LookupState: NearbyLookupState.Transferred };
-				var cached = isTransferred ? null : cachedProfilesByKey.GetValueOrDefault(cacheKey);
-				var resolved = isTransferred ? null : resolvedByKey.GetValueOrDefault(cacheKey);
+				var usesSnapshot = known is {
+					LookupState: NearbyLookupState.Transferred or NearbyLookupState.Deleted,
+				};
+				var cached = usesSnapshot ? null : cachedProfilesByKey.GetValueOrDefault(cacheKey);
+				var resolved = usesSnapshot ? null : resolvedByKey.GetValueOrDefault(cacheKey);
 				var name = known?.Data.Name ?? resolved?.Name ?? pin.Name;
 				var homeWorldId =
 					known?.Data.HomeWorldId ?? resolved?.HomeWorldId ?? pin.HomeWorldId;
@@ -153,19 +156,22 @@ public sealed class DatabaseOverviewService(
 				Lazy<LodestoneProfile>? profile;
 				DateTime? profileFetchedAtUtc;
 				string? avatarUrlHash;
-				if (isTransferred)
+				string? avatarWorldName = null;
+				if (usesSnapshot)
 				{
 					var snapshot = lodestoneCache.TryGetPinnedProfileSnapshot(pin.LodestoneId);
 					profile = snapshot is { } s ? new Lazy<LodestoneProfile>(() => s.Profile) : null;
 					profileFetchedAtUtc = snapshot?.FetchedAtUtc;
 					avatarUrlHash = snapshot?.Profile.AvatarUrlHash;
 				}
-				else if (known == null && cached == null && resolved == null)
+				else if (cached == null && resolved == null)
 				{
 					var partial = DatabaseOverviewService.BuildReportProfile(pin);
 					profile = new Lazy<LodestoneProfile>(() => partial);
 					profileFetchedAtUtc = null;
 					avatarUrlHash = pin.AvatarUrlHash;
+					avatarWorldName =
+						GameDataResolver.ResolveWorldName(dataManager, pin.HomeWorldId);
 				}
 				else
 				{
@@ -177,7 +183,8 @@ public sealed class DatabaseOverviewService(
 				return new DatabaseEntryViewModel(
 					cacheKey, name, worldName, true, profile, profileFetchedAtUtc,
 					known?.Data, known?.LastSeenUtc, avatarUrlHash, dataCenterName,
-					NameHistory: nameHistory, IsConflicted: isTransferred);
+					NameHistory: nameHistory, IsConflicted: isTransferred,
+					AvatarWorld: avatarWorldName);
 			}).ToArray();
 
 		this.pinned = pinnedList;
@@ -211,6 +218,12 @@ public sealed class DatabaseOverviewService(
 					GameDataResolver.ResolveDataCenterName(dataManager, known.Data.HomeWorldId);
 				cachedProfilesByKey.TryGetValue(cacheKey, out var cached);
 				resolvedByKey.TryGetValue(cacheKey, out var resolved);
+				if (known.LookupState == NearbyLookupState.Deleted &&
+					resolved?.LodestoneId != known.LodestoneId)
+				{
+					cached = null;
+					resolved = null;
+				}
 
 				var (profile, profileFetchedAtUtc) = LodestoneProfile.ResolveOrPartial(
 					cached, resolved, known.LookupState == NearbyLookupState.AccessRestricted);
@@ -256,15 +269,6 @@ public sealed class DatabaseOverviewService(
 			}).ToArray();
 
 		this.hidden = hiddenList;
-
-		foreach (var known in hiddenKnown)
-		{
-			foreach (var (freeCompanyId, freeCompanyName) in freeCompanyIdIndex.GetFreeCompanies(
-				known.Data.FreeCompanyTag, known.Data.HomeWorldId))
-			{
-				_ = groupSearchService.ForceResolveFreeCompanyRosterAsync(freeCompanyId, freeCompanyName);
-			}
-		}
 
 		log.Verbose(
 			$"Reloaded Database Hidden tab: {this.hidden.Count} in {stopwatch.ElapsedMilliseconds} ms.");

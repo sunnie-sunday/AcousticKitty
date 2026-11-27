@@ -182,16 +182,10 @@ internal sealed class SearchTab(Plugin plugin)
 		var badge = ProfileView.FormatJobLine(
 			member.KnownCharacter?.Data, null, fallbackJobAbbreviation, member.Entry.Level?.ToString());
 
-		string? statusMessage = member.ProfileState switch
-		{
-			MemberProfileState.NotFound =>
-				"This character is hidden from search results.",
-			MemberProfileState.AccessRestricted =>
-				"This character's profile is private.",
-			MemberProfileState.Error =>
-				$"Failed to fetch profile: {member.ErrorMessage ?? "Unknown error."}",
-			_ => null,
-		};
+		var statusMessage =
+			member.KnownCharacter?.LookupState == NearbyLookupState.AccessRestricted
+				? "This character's profile is private."
+				: null;
 
 		MemberRow.Draw(
 			plugin,
@@ -201,7 +195,7 @@ internal sealed class SearchTab(Plugin plugin)
 				ProfileView.ResolveAvatarUrl(member.Profile, member.Entry.AvatarUrlHash, fallbackWorld),
 				primaryLine,
 				badge,
-				IsBusy: member.ProfileState == MemberProfileState.Fetching,
+				IsBusy: false,
 				statusMessage,
 				member.Profile is { } profile ? new Lazy<LodestoneProfile>(() => profile) : null,
 				member.KnownCharacter?.Data,

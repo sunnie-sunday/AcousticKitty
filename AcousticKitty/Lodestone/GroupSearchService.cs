@@ -32,9 +32,10 @@ public sealed class GroupSearchService(
 
 	private readonly CancellationTokenSource disposalCts = new();
 	private readonly object forceSearchGate = new();
-	private readonly HashSet<ulong> forceSearchedFreeCompanyIds = new();
+	private readonly HashSet<(SocialGroupKind Kind, string GroupId)> forceSearchedGroups = new();
+	private readonly SemaphoreSlim forceResolveGate = new(1, 1);
 	private readonly object activeRosterFetchesGate = new();
-	private readonly Dictionary<ulong, string> activeRosterFetches = new();
+	private readonly List<RosterFetch> activeRosterFetches = new();
 
 	private volatile GroupSearchState state = GroupSearchState.Idle;
 	private string? errorMessage;
@@ -50,16 +51,15 @@ public sealed class GroupSearchService(
 	public string? ErrorMessage => this.errorMessage;
 
 	public IReadOnlyList<GroupSearchResult> GroupMatches => this.groupMatches;
-
 	public IReadOnlyList<GroupMemberViewModel> Members => this.members;
 
-	public IReadOnlyList<(ulong FreeCompanyId, string FreeCompanyName)> ActiveFreeCompanyRosterFetches
+	public IReadOnlyList<RosterFetch> ActiveRosterFetches
 	{
 		get
 		{
 			lock (this.activeRosterFetchesGate)
 			{
-				return this.activeRosterFetches.Select(pair => (pair.Key, pair.Value)).ToArray();
+				return this.activeRosterFetches.ToArray();
 			}
 		}
 	}
@@ -88,30 +88,50 @@ public sealed class GroupSearchService(
 		this.state = GroupSearchState.Idle;
 	}
 
-	internal async Task ForceResolveFreeCompanyRosterAsync(ulong freeCompanyId, string freeCompanyName)
+	internal Task ForceResolveFreeCompanyRosterAsync(ulong freeCompanyId, string freeCompanyName) =>
+		this.ForceResolveRosterAsync(
+			SocialGroupKind.FreeCompany, freeCompanyId.ToString(CultureInfo.InvariantCulture),
+			freeCompanyName);
+
+	internal async Task ForceResolveRosterAsync(
+		SocialGroupKind kind, string groupId, string groupName)
 	{
+		if (this.disposalCts.IsCancellationRequested)
+		{
+			return;
+		}
+
+		var cancellationToken = this.disposalCts.Token;
 		lock (this.forceSearchGate)
 		{
-			if (!this.forceSearchedFreeCompanyIds.Add(freeCompanyId))
+			if (!this.forceSearchedGroups.Add((kind, groupId)))
 			{
 				return;
 			}
 		}
 
-		this.AddActiveRosterFetch(freeCompanyId, freeCompanyName);
+		var knownFreeCompanyId = GroupSearchService.ParseFreeCompanyId(kind, groupId);
+		var fetch = this.TrackRosterFetch(kind, groupId, groupName);
 		try
 		{
-			await client
-				.GetGroupRosterAsync(
-					SocialGroupKind.FreeCompany,
-					freeCompanyId.ToString(CultureInfo.InvariantCulture),
-					MaxRosterPages,
-					dataManager,
-					(pageEntries, resolvedFreeCompanyName) => this.ResolveEntries(
-						pageEntries, freeCompanyId, resolvedFreeCompanyName ?? freeCompanyName,
-						prefetchAvatars: false, this.disposalCts.Token),
-					this.disposalCts.Token)
-				.ConfigureAwait(false);
+			await this.forceResolveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+			try
+			{
+				await client
+					.GetGroupRosterAsync(
+						kind, groupId, MaxRosterPages, dataManager,
+						(pageEntries, resolvedFreeCompanyName) => this.ResolveEntries(
+							pageEntries, kind, knownFreeCompanyId,
+							resolvedFreeCompanyName ?? groupName, fromSearchTab: false,
+							cancellationToken),
+						highPriority: false,
+						cancellationToken)
+					.ConfigureAwait(false);
+			}
+			finally
+			{
+				this.forceResolveGate.Release();
+			}
 		}
 		catch (OperationCanceledException)
 		{
@@ -119,25 +139,50 @@ public sealed class GroupSearchService(
 		catch (LodestoneNotFoundException)
 		{
 			log.Information(
-				$"Free Company {freeCompanyName} ({freeCompanyId}) skipped after disbanding.");
+				$"{kind.DisplayName()} {groupName} ({groupId}) skipped after disbanding.");
 		}
 		catch (LodestoneUnavailableException ex)
 		{
 			lock (this.forceSearchGate)
 			{
-				this.forceSearchedFreeCompanyIds.Remove(freeCompanyId);
+				this.forceSearchedGroups.Remove((kind, groupId));
 			}
 
 			log.Warning(
-				$"Free Company {freeCompanyName} ({freeCompanyId}) roster interrupted: {ex.Message}");
+				$"{kind.DisplayName()} {groupName} ({groupId}) roster interrupted: {ex.Message}");
 		}
 		catch (Exception ex)
 		{
-			log.Error(ex, $"Failed to force-resolve Free Company roster {freeCompanyId}.");
+			log.Error(ex, $"Failed to force-resolve {kind.DisplayName()} roster {groupId}.");
 		}
 		finally
 		{
-			this.RemoveActiveRosterFetch(freeCompanyId);
+			this.UntrackRosterFetch(fetch);
+		}
+	}
+
+	internal void ForceResolveForHiddenWithTag(
+		KnownCharacter source, ulong? freeCompanyId, string? freeCompanyName)
+	{
+		if (source.Data.FreeCompanyTag is { Length: > 0 } tag && freeCompanyId is { } id &&
+			freeCompanyName != null &&
+			characterDirectory.HasHiddenWithFreeCompanyTag(
+				tag, source.Data.HomeWorldId, source.Data.ContentId))
+		{
+			_ = this.ForceResolveFreeCompanyRosterAsync(id, freeCompanyName);
+		}
+	}
+
+	internal void ApplyFetchedProfile(
+		ulong lodestoneId, LodestoneProfile profile, DateTime fetchedAtUtc)
+	{
+		foreach (var member in this.members)
+		{
+			if (member.Entry.CharacterId == lodestoneId)
+			{
+				member.Profile = profile;
+				member.ProfileFetchedAtUtc = fetchedAtUtc;
+			}
 		}
 	}
 
@@ -229,17 +274,9 @@ public sealed class GroupSearchService(
 		this.state = GroupSearchState.FetchingRoster;
 		this.groupMatches = Array.Empty<GroupSearchResult>();
 
-		var knownFreeCompanyId =
-			kind == SocialGroupKind.FreeCompany && ulong.TryParse(groupId, out var fcId)
-				? fcId
-				: (ulong?)null;
-
-		var nameTracked = false;
-		if (knownFreeCompanyId is { } upfrontId && knownGroupName != null)
-		{
-			this.AddActiveRosterFetch(upfrontId, knownGroupName);
-			nameTracked = true;
-		}
+		var knownFreeCompanyId = GroupSearchService.ParseFreeCompanyId(kind, groupId);
+		var fetch = this.TrackRosterFetch(kind, groupId, knownGroupName ?? groupId);
+		var named = knownGroupName != null;
 
 		try
 		{
@@ -248,62 +285,86 @@ public sealed class GroupSearchService(
 					kind, groupId, MaxRosterPages, dataManager,
 					(pageEntries, freeCompanyName) =>
 					{
-						if (!nameTracked && knownFreeCompanyId is { } id && freeCompanyName != null)
+						if (!named && freeCompanyName != null)
 						{
-							this.AddActiveRosterFetch(id, freeCompanyName);
-							nameTracked = true;
+							fetch = this.RenameRosterFetch(fetch, freeCompanyName);
+							named = true;
 						}
 
 						this.AppendMembers(
-							pageEntries, knownFreeCompanyId, freeCompanyName ?? knownGroupName,
+							pageEntries, kind, knownFreeCompanyId, freeCompanyName ?? knownGroupName,
 							cancellationToken);
 					},
+					highPriority: true,
 					cancellationToken)
 				.ConfigureAwait(false);
 		}
 		finally
 		{
-			if (knownFreeCompanyId is { } idToRemove)
-			{
-				this.RemoveActiveRosterFetch(idToRemove);
-			}
+			this.UntrackRosterFetch(fetch);
 		}
 
 		this.state = this.members.Count == 0 ? GroupSearchState.NotFound : GroupSearchState.Ready;
 	}
 
-	private void AddActiveRosterFetch(ulong freeCompanyId, string freeCompanyName)
+	private static ulong? ParseFreeCompanyId(SocialGroupKind kind, string groupId) =>
+		kind == SocialGroupKind.FreeCompany && ulong.TryParse(groupId, out var freeCompanyId)
+			? freeCompanyId
+			: null;
+
+	private RosterFetch TrackRosterFetch(SocialGroupKind kind, string groupId, string name)
 	{
+		var fetch = new RosterFetch(kind, groupId, name);
 		lock (this.activeRosterFetchesGate)
 		{
-			this.activeRosterFetches[freeCompanyId] = freeCompanyName;
+			this.activeRosterFetches.Add(fetch);
 		}
+
+		return fetch;
 	}
 
-	private void RemoveActiveRosterFetch(ulong freeCompanyId)
+	private RosterFetch RenameRosterFetch(RosterFetch fetch, string name)
+	{
+		var renamed = fetch with { Name = name };
+		lock (this.activeRosterFetchesGate)
+		{
+			var index = this.activeRosterFetches.IndexOf(fetch);
+			if (index >= 0)
+			{
+				this.activeRosterFetches[index] = renamed;
+			}
+		}
+
+		return renamed;
+	}
+
+	private void UntrackRosterFetch(RosterFetch fetch)
 	{
 		lock (this.activeRosterFetchesGate)
 		{
-			this.activeRosterFetches.Remove(freeCompanyId);
+			this.activeRosterFetches.Remove(fetch);
 		}
 	}
 
 	private void AppendMembers(
 		IReadOnlyList<MemberListEntry> entries,
+		SocialGroupKind kind,
 		ulong? knownFreeCompanyId,
 		string? knownFreeCompanyName,
 		CancellationToken cancellationToken)
 	{
 		var resolved = this.ResolveEntries(
-			entries, knownFreeCompanyId, knownFreeCompanyName, prefetchAvatars: true, cancellationToken);
+			entries, kind, knownFreeCompanyId, knownFreeCompanyName, fromSearchTab: true,
+			cancellationToken);
 		this.members = this.members.Concat(resolved).ToArray();
 	}
 
 	private List<GroupMemberViewModel> ResolveEntries(
 		IReadOnlyList<MemberListEntry> entries,
+		SocialGroupKind kind,
 		ulong? knownFreeCompanyId,
 		string? knownFreeCompanyName,
-		bool prefetchAvatars,
+		bool fromSearchTab,
 		CancellationToken cancellationToken)
 	{
 		var stopwatch = Stopwatch.StartNew();
@@ -332,7 +393,6 @@ public sealed class GroupSearchService(
 				viewModel.Profile = LodestoneProfile.BuildPartial(
 					entry.CharacterId, entry.Name, entry.HomeWorldId, entry.AvatarUrlHash,
 					entry.FreeCompanyId, entry.FreeCompanyName, entry.JobId, entry.Level, isPrivate: false);
-				viewModel.ProfileState = MemberProfileState.Loaded;
 				collected.Add(viewModel);
 				continue;
 			}
@@ -366,18 +426,22 @@ public sealed class GroupSearchService(
 
 			if (viewModel.KnownCharacter is { } matchedCharacter)
 			{
-				freeCompanyIdIndex.Record(
-					matchedCharacter.Data.FreeCompanyTag, matchedCharacter.Data.HomeWorldId,
-					entry.FreeCompanyId, entry.FreeCompanyName);
+				if (freeCompanyIdIndex.Record(
+						matchedCharacter.Data.FreeCompanyTag, matchedCharacter.Data.HomeWorldId,
+						entry.FreeCompanyId, entry.FreeCompanyName) &&
+					kind != SocialGroupKind.FreeCompany)
+				{
+					this.ForceResolveForHiddenWithTag(
+						matchedCharacter, entry.FreeCompanyId, entry.FreeCompanyName);
+				}
 			}
 
 			if (viewModel.KnownCharacter is {
 				LookupState: NearbyLookupState.Pending or NearbyLookupState.NotFound
-					or NearbyLookupState.Error,
+					or NearbyLookupState.Error or NearbyLookupState.Deleted,
 			} unresolved)
 			{
-				characterDirectory.SetLookupResult(
-					unresolved.Data.ContentId, entry.CharacterId, NearbyLookupState.Found, null);
+				this.ResolveMatchedMember(unresolved.Data.ContentId, entry.CharacterId, kind);
 				viewModel.KnownCharacter = characterDirectory.TryGetByContentId(unresolved.Data.ContentId);
 			}
 
@@ -387,28 +451,19 @@ public sealed class GroupSearchService(
 			viewModel.IsConflicted =
 				viewModel.KnownCharacter?.LookupState == NearbyLookupState.ConflictHold;
 
-			if (viewModel.KnownCharacter is { LookupState: NearbyLookupState.AccessRestricted })
+			if ((viewModel.IsPinned || viewModel.KnownCharacter != null) &&
+				!this.TryApplyCachedProfile(viewModel, cacheKey) &&
+				!(viewModel.IsPinned && this.TryApplyPinnedSnapshot(viewModel)))
 			{
-				if (!this.TryApplyCachedProfile(viewModel, cacheKey))
-				{
-					viewModel.Profile = LodestoneProfile.BuildPartial(
-						entry.CharacterId, entry.Name, entry.HomeWorldId, entry.AvatarUrlHash,
-						entry.FreeCompanyId, entry.FreeCompanyName, entry.JobId, entry.Level, isPrivate: true);
-					viewModel.ProfileState = MemberProfileState.Loaded;
-				}
-			}
-			else if (viewModel.IsPinned || viewModel.KnownCharacter is { LookupState: NearbyLookupState.Found })
-			{
-				if (!this.TryApplyCachedProfile(viewModel, cacheKey))
-				{
-					viewModel.ProfileState = MemberProfileState.Fetching;
-					_ = this.FetchMemberProfileAsync(viewModel, cacheKey);
-				}
+				viewModel.Profile = LodestoneProfile.BuildPartial(
+					entry.CharacterId, entry.Name, entry.HomeWorldId, entry.AvatarUrlHash,
+					entry.FreeCompanyId, entry.FreeCompanyName, entry.JobId, entry.Level,
+					viewModel.KnownCharacter?.LookupState == NearbyLookupState.AccessRestricted);
 			}
 
 			collected.Add(viewModel);
 
-			if (prefetchAvatars)
+			if (fromSearchTab)
 			{
 				var worldName = GameDataResolver.ResolveWorldName(dataManager, entry.HomeWorldId);
 				if (AvatarUrlBuilder.Build(entry.AvatarUrlHash, worldName) is { } prefetchUrl)
@@ -418,7 +473,8 @@ public sealed class GroupSearchService(
 			}
 		}
 
-		lodestoneCache.SaveResolvedIds(resolvedIdUpdates);
+		lodestoneCache.SaveResolvedIds(
+			resolvedIdUpdates, freeCompanyKnown: kind != SocialGroupKind.PvpTeam);
 
 		log.Verbose(
 			$"GroupSearchService.ResolveEntries: {entries.Count} member(s) processed in " +
@@ -437,78 +493,37 @@ public sealed class GroupSearchService(
 
 		viewModel.Profile = cached.Value.Profile;
 		viewModel.ProfileFetchedAtUtc = cached.Value.FetchedAtUtc;
-		viewModel.ProfileState = MemberProfileState.Loaded;
 		return true;
 	}
 
-	private async Task FetchMemberProfileAsync(GroupMemberViewModel member, string cacheKey)
+	private bool TryApplyPinnedSnapshot(GroupMemberViewModel viewModel)
 	{
-		try
+		var snapshot = lodestoneCache.TryGetPinnedProfileSnapshot(viewModel.Entry.CharacterId);
+		if (snapshot == null)
 		{
-			var profile = await client
-				.GetProfileAsync(member.Entry.CharacterId, dataManager, this.disposalCts.Token)
-				.ConfigureAwait(false);
-
-			profile = profile with
-			{
-				JobId = member.Entry.JobId,
-				Level = member.Entry.Level,
-				FreeCompanyId = member.Entry.FreeCompanyId ?? profile.FreeCompanyId,
-				FreeCompanyName = member.Entry.FreeCompanyName ?? profile.FreeCompanyName,
-			};
-
-			var fetchedAtUtc = DateTime.UtcNow;
-			var saved = lodestoneCache.SaveCachedProfile(cacheKey, profile, fetchedAtUtc);
-
-			if (saved)
-			{
-				member.Profile = profile;
-				member.ProfileFetchedAtUtc = fetchedAtUtc;
-				if (member.KnownCharacter is { } known)
-				{
-					freeCompanyIdIndex.Record(
-						known.Data.FreeCompanyTag, known.Data.HomeWorldId, profile.FreeCompanyId,
-						profile.FreeCompanyName);
-				}
-			}
-			else
-			{
-				log.Warning(ProfileRegressionGuard.LogMessage(member.Entry.Name));
-			}
-
-			this.LinkKnownCharacter(member, NearbyLookupState.Found);
-
-			member.ProfileState = MemberProfileState.Loaded;
+			return false;
 		}
-		catch (OperationCanceledException)
-		{
-			member.ProfileState = MemberProfileState.NotPinned;
-		}
-		catch (LodestoneNotFoundException)
-		{
-			member.ProfileState = MemberProfileState.NotFound;
-		}
-		catch (LodestoneAccessRestrictedException)
-		{
-			this.LinkKnownCharacter(member, NearbyLookupState.AccessRestricted);
-			member.ProfileState = MemberProfileState.AccessRestricted;
-		}
-		catch (Exception ex)
-		{
-			log.Error(ex, "Failed to fetch a Search tab member's profile.");
-			member.ErrorMessage = ex.Message;
-			member.ProfileState = MemberProfileState.Error;
-		}
+
+		viewModel.Profile = snapshot.Profile;
+		viewModel.ProfileFetchedAtUtc = snapshot.FetchedAtUtc;
+		return true;
 	}
 
-	private void LinkKnownCharacter(GroupMemberViewModel member, NearbyLookupState state)
+	private void ResolveMatchedMember(ulong contentId, ulong lodestoneId, SocialGroupKind kind)
 	{
-		if (member.KnownCharacter is not { } known)
+		if (kind == SocialGroupKind.PvpTeam)
 		{
+			characterDirectory.SetLookupResult(
+				contentId, lodestoneId, NearbyLookupState.Pending, null, clearOverride: false,
+				priorityAtUtc: DateTime.UtcNow);
 			return;
 		}
 
-		characterDirectory.SetLookupResult(known.Data.ContentId, member.Entry.CharacterId, state, null);
+		if (!characterDirectory.HoldIfLodestoneIdTaken(contentId, lodestoneId, DateTime.UtcNow))
+		{
+			characterDirectory.SetLookupResult(
+				contentId, lodestoneId, NearbyLookupState.Found, null);
+		}
 	}
 
 	#endregion

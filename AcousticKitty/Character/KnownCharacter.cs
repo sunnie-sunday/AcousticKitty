@@ -22,6 +22,7 @@ public enum NearbyLookupState
 	Error,
 	Transferred,
 	ConflictHold,
+	Deleted,
 }
 
 public sealed record KnownCharacter(

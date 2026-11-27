@@ -49,9 +49,12 @@ public interface ILodestoneClient
 		int maxPages,
 		IDataManager dataManager,
 		Action<IReadOnlyList<MemberListEntry>, string?> onPageFetched,
+		bool highPriority,
 		CancellationToken cancellationToken);
 
 	Task<byte[]> GetAvatarBytesAsync(string avatarUrl, bool highPriority, CancellationToken cancellationToken);
+
+	Task WaitUntilAvailableAsync(CancellationToken cancellationToken);
 }
 
 #endregion
@@ -60,31 +63,25 @@ public sealed class LodestoneClient(IPluginLog log)
 	: ILodestoneClient, IDisposable
 {
 	private const string Host = "na.finalfantasyxiv.com";
-
 	private const string HeavyTrafficText = "The server is experiencing unusually heavy traffic";
-
 	private const string UserAgent =
 		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
 		"Chrome/156.0.0.0 Safari/537.36 Edg/156.0.0.0";
 
 	private static readonly TimeSpan MaintenanceBackoff = TimeSpan.FromMinutes(5);
-
 	private static readonly TimeSpan InitialBackoff = TimeSpan.FromSeconds(30);
-
 	private static readonly TimeSpan MaxBackoff = TimeSpan.FromMinutes(5);
 
-	private readonly RateLimiter rateLimiter = new(TimeSpan.FromSeconds(1));
-
+	private readonly RateLimiter profileRateLimiter = new(TimeSpan.FromSeconds(1));
+	private readonly RateLimiter rosterRateLimiter = new(TimeSpan.FromSeconds(1));
 	private readonly RateLimiter avatarRateLimiter = new(TimeSpan.FromMilliseconds(20));
 
 	private readonly object clientGate = new();
-
 	private readonly object backoffGate = new();
 
 	private HttpClient? cachedClient;
 
 	private DateTime pausedUntilUtc = DateTime.MinValue;
-
 	private TimeSpan nextBackoff = InitialBackoff;
 
 	#region Endpoints
@@ -97,7 +94,8 @@ public sealed class LodestoneClient(IPluginLog log)
 	{
 		var url = $"https://{Host}/lodestone/character/" +
 			$"?q={Uri.EscapeDataString(characterName)}&worldname={Uri.EscapeDataString(worldName)}";
-		var html = await this.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
+		var html = await this.GetStringAsync(url, this.profileRateLimiter, cancellationToken)
+			.ConfigureAwait(false);
 		return LodestoneParser.FindCharacterEntry(dataManager, html, characterName, worldName);
 	}
 
@@ -116,7 +114,8 @@ public sealed class LodestoneClient(IPluginLog log)
 		CancellationToken cancellationToken)
 	{
 		var url = $"https://{Host}/lodestone/character/{lodestoneId}/";
-		var html = await this.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
+		var html = await this.GetStringAsync(url, this.profileRateLimiter, cancellationToken)
+			.ConfigureAwait(false);
 		return LodestoneParser.ParseProfile(dataManager, html, lodestoneId);
 	}
 
@@ -137,7 +136,8 @@ public sealed class LodestoneClient(IPluginLog log)
 			url += $"&{paramName}={Uri.EscapeDataString($"_dc_{worldOrDataCenter}")}";
 		}
 
-		var html = await this.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
+		var html = await this.GetStringAsync(url, this.rosterRateLimiter, cancellationToken)
+			.ConfigureAwait(false);
 		return LodestoneParser.ParseGroupSearchResults(dataManager, html, kind);
 	}
 
@@ -147,10 +147,11 @@ public sealed class LodestoneClient(IPluginLog log)
 		int maxPages,
 		IDataManager dataManager,
 		Action<IReadOnlyList<MemberListEntry>, string?> onPageFetched,
+		bool highPriority,
 		CancellationToken cancellationToken)
 	{
 		var firstPageHtml = await this
-			.GetGroupMemberPageHtmlAsync(kind, groupId, 1, cancellationToken)
+			.GetGroupMemberPageHtmlAsync(kind, groupId, 1, highPriority, cancellationToken)
 			.ConfigureAwait(false);
 
 		var freeCompanyName = kind == SocialGroupKind.FreeCompany
@@ -165,7 +166,7 @@ public sealed class LodestoneClient(IPluginLog log)
 		for (var page = 2; page <= totalPages; page++)
 		{
 			var html = await this
-				.GetGroupMemberPageHtmlAsync(kind, groupId, page, cancellationToken)
+				.GetGroupMemberPageHtmlAsync(kind, groupId, page, highPriority, cancellationToken)
 				.ConfigureAwait(false);
 			var pageMembers = LodestoneParser.ParseMemberListEntries(dataManager, html);
 			members.AddRange(pageMembers);
@@ -179,12 +180,13 @@ public sealed class LodestoneClient(IPluginLog log)
 		SocialGroupKind kind,
 		string groupId,
 		int page,
+		bool highPriority,
 		CancellationToken cancellationToken)
 	{
 		var memberSegment = kind == SocialGroupKind.FreeCompany ? "member/" : string.Empty;
 		var url = $"https://{Host}/lodestone/{GetGroupUrlSegment(kind)}/{groupId}/" +
 			$"{memberSegment}?page={page}";
-		return this.GetStringAsync(url, cancellationToken);
+		return this.GetStringAsync(url, this.rosterRateLimiter, cancellationToken, highPriority);
 	}
 
 	public async Task<byte[]> GetAvatarBytesAsync(
@@ -200,6 +202,14 @@ public sealed class LodestoneClient(IPluginLog log)
 		return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
 	}
 
+	public async Task WaitUntilAvailableAsync(CancellationToken cancellationToken)
+	{
+		while (this.GetPauseRemaining() is var remaining && remaining > TimeSpan.Zero)
+		{
+			await Task.Delay(remaining, cancellationToken).ConfigureAwait(false);
+		}
+	}
+
 	#endregion
 
 	#region Plumbing
@@ -213,9 +223,12 @@ public sealed class LodestoneClient(IPluginLog log)
 		_ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
 	};
 
-	private async Task<string> GetStringAsync(string url, CancellationToken cancellationToken)
+	private async Task<string> GetStringAsync(
+		string url, RateLimiter rateLimiter, CancellationToken cancellationToken,
+		bool highPriority = true)
 	{
-		await this.WaitForRequestSlotAsync(cancellationToken).ConfigureAwait(false);
+		await this.WaitForRequestSlotAsync(rateLimiter, highPriority, cancellationToken)
+			.ConfigureAwait(false);
 		try
 		{
 			var body = await this.SendAsync(url, cancellationToken).ConfigureAwait(false);
@@ -229,7 +242,8 @@ public sealed class LodestoneClient(IPluginLog log)
 		}
 	}
 
-	private async Task WaitForRequestSlotAsync(CancellationToken cancellationToken)
+	private async Task WaitForRequestSlotAsync(
+		RateLimiter rateLimiter, bool highPriority, CancellationToken cancellationToken)
 	{
 		while (true)
 		{
@@ -240,8 +254,7 @@ public sealed class LodestoneClient(IPluginLog log)
 				continue;
 			}
 
-			await this.rateLimiter.WaitAsync(highPriority: true, cancellationToken)
-				.ConfigureAwait(false);
+			await rateLimiter.WaitAsync(highPriority, cancellationToken).ConfigureAwait(false);
 			if (this.GetPauseRemaining() <= TimeSpan.Zero)
 			{
 				return;

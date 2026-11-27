@@ -35,6 +35,33 @@ internal sealed partial class NameHistoryStore
 			SeenUntilUtc = UtcTimestamp.Format(seenUntilUtc),
 		}));
 
+	public void RecordPastName(
+		ulong contentId, string name, string homeWorldName, DateTime seenUntilUtc) =>
+		this.Write(() =>
+		{
+			var seenUntil = UtcTimestamp.Format(seenUntilUtc);
+			var existing = this.connection.Table<NameHistoryRow>()
+				.Where(row => row.ContentId == (long)contentId && row.Name == name &&
+					row.HomeWorldName == homeWorldName)
+				.OrderByDescending(row => row.Id)
+				.FirstOrDefault();
+			if (existing == null)
+			{
+				this.connection.Insert(new NameHistoryRow
+				{
+					ContentId = (long)contentId,
+					Name = name,
+					HomeWorldName = homeWorldName,
+					SeenUntilUtc = seenUntil,
+				});
+			}
+			else if (string.CompareOrdinal(existing.SeenUntilUtc, seenUntil) < 0)
+			{
+				existing.SeenUntilUtc = seenUntil;
+				this.connection.Update(existing);
+			}
+		});
+
 	public IReadOnlyList<string> GetHistoryWorldNames(ulong contentId) =>
 		this.Read<IReadOnlyList<string>>(
 			() => this.connection.Table<NameHistoryRow>()
@@ -47,7 +74,8 @@ internal sealed partial class NameHistoryStore
 		this.Read<IReadOnlyList<NameHistoryEntry>>(
 			() => this.connection.Table<NameHistoryRow>()
 				.Where(row => row.ContentId == (long)contentId)
-				.OrderByDescending(row => row.Id)
+				.OrderByDescending(row => row.SeenUntilUtc)
+				.ThenByDescending(row => row.Id)
 				.Select(row => new NameHistoryEntry(
 					row.Name, row.HomeWorldName, UtcTimestamp.Parse(row.SeenUntilUtc)))
 				.ToArray(),

@@ -35,7 +35,7 @@ internal static class DatabaseCapEnforcer
 		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, EchoList echoList,
 		int cap)
 	{
-		if (characterDirectory.CountFoundOrAccessRestricted() <= EnforcementCeiling(cap))
+		if (characterDirectory.CountMatched() <= EnforcementCeiling(cap))
 		{
 			return;
 		}
@@ -58,7 +58,7 @@ internal static class DatabaseCapEnforcer
 
 	public static IReadOnlyList<KnownCharacter> GetMatchedCandidates(
 		CharacterDirectory characterDirectory, EchoList echoList) =>
-		characterDirectory.GetFoundOrAccessRestricted()
+		characterDirectory.GetMatched()
 			.Where(known =>
 				known.LodestoneId != null && !echoList.IsPinned(known.Data.ContentId, known.LodestoneId))
 			.ToArray();
@@ -88,7 +88,7 @@ internal static class DatabaseCapEnforcer
 		CharacterDirectory characterDirectory, LodestoneCache lodestoneCache, EchoList echoList,
 		int cap)
 	{
-		if (lodestoneCache.CountResolved() - characterDirectory.CountFoundOrAccessRestricted()
+		if (lodestoneCache.CountResolved() - characterDirectory.CountMatched()
 			<= EnforcementCeiling(cap))
 		{
 			return;

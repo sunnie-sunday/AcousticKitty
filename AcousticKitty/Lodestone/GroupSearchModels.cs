@@ -8,6 +8,8 @@ using AcousticKitty.Character;
 
 namespace AcousticKitty.Lodestone;
 
+public sealed record RosterFetch(SocialGroupKind Kind, string GroupId, string Name);
+
 public enum GroupSearchState
 {
 	Idle,
@@ -19,31 +21,14 @@ public enum GroupSearchState
 	Error,
 }
 
-public enum MemberProfileState
-{
-	NotPinned,
-	Fetching,
-	Loaded,
-	NotFound,
-	AccessRestricted,
-	Error,
-}
-
 public sealed class GroupMemberViewModel(MemberListEntry entry)
 {
 	public MemberListEntry Entry { get; } = entry;
 
 	public bool IsPinned { get; internal set; }
-
 	public bool IsConflicted { get; internal set; }
 
-	public MemberProfileState ProfileState { get; internal set; } = MemberProfileState.NotPinned;
-
 	public LodestoneProfile? Profile { get; internal set; }
-
 	public DateTime? ProfileFetchedAtUtc { get; internal set; }
-
-	public string? ErrorMessage { get; internal set; }
-
 	public KnownCharacter? KnownCharacter { get; internal set; }
 }

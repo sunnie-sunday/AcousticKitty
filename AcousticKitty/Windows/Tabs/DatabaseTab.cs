@@ -222,7 +222,8 @@ internal sealed class DatabaseTab(Plugin plugin)
 			new CharacterRowData(
 				entry.CacheKey,
 				entry.IsPinned,
-				ProfileView.ResolveAvatarUrl(entry.Profile?.Value, entry.AvatarUrlHash, entry.World),
+				ProfileView.ResolveAvatarUrl(
+					entry.Profile?.Value, entry.AvatarUrlHash, entry.AvatarWorld ?? entry.World),
 				primaryLine,
 				badge,
 				IsBusy: false,
