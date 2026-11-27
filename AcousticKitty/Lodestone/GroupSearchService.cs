@@ -415,6 +415,12 @@ public sealed class GroupSearchService(
 					characterDirectory.TryGetByContentId(matchedByLodestoneId.Data.ContentId);
 			}
 
+			if (viewModel.KnownCharacter is { LookupState: NearbyLookupState.ConflictHold })
+			{
+				viewModel.IsConflicted = true;
+				viewModel.KnownCharacter = null;
+			}
+
 			var cacheKey = CharacterKey.Build(entry.Name, entry.HomeWorldId);
 
 			resolvedIdUpdates.Add((
@@ -445,8 +451,6 @@ public sealed class GroupSearchService(
 			viewModel.IsPinned = echoList.IsPinnedLodestoneId(entry.CharacterId) ||
 				(viewModel.KnownCharacter is { } pinCandidate &&
 					echoList.IsPinned(pinCandidate.Data.ContentId, null));
-			viewModel.IsConflicted =
-				viewModel.KnownCharacter?.LookupState == NearbyLookupState.ConflictHold;
 
 			if ((viewModel.IsPinned || viewModel.KnownCharacter != null) &&
 				!this.TryApplyCachedProfile(viewModel, cacheKey) &&
