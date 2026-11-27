@@ -94,16 +94,18 @@ public sealed partial class LodestoneCache : IDisposable
 		int? level = null,
 		uint? jobId = null,
 		ulong? freeCompanyId = null,
-		string? freeCompanyName = null) =>
+		string? freeCompanyName = null,
+		bool freeCompanyKnown = false) =>
 		this.Write(() => this.UpsertResolvedRow(
 			key, lodestoneId, name, homeWorldId, resolvedAtUtc, avatarUrlHash, level, jobId,
-			freeCompanyId, freeCompanyName));
+			freeCompanyId, freeCompanyName, freeCompanyKnown));
 
 	public void SaveResolvedIds(
 		IReadOnlyList<(
 			string Key, ulong LodestoneId, string Name, uint HomeWorldId, DateTime ResolvedAtUtc,
 			string? AvatarUrlHash, int? Level, uint? JobId, ulong? FreeCompanyId,
-			string? FreeCompanyName)> updates)
+			string? FreeCompanyName)> updates,
+		bool freeCompanyKnown)
 	{
 		if (updates.Count == 0)
 		{
@@ -117,7 +119,7 @@ public sealed partial class LodestoneCache : IDisposable
 				this.UpsertResolvedRow(
 					update.Key, update.LodestoneId, update.Name, update.HomeWorldId,
 					update.ResolvedAtUtc, update.AvatarUrlHash, update.Level, update.JobId,
-					update.FreeCompanyId, update.FreeCompanyName);
+					update.FreeCompanyId, update.FreeCompanyName, freeCompanyKnown);
 			}
 		}));
 	}
@@ -132,7 +134,8 @@ public sealed partial class LodestoneCache : IDisposable
 		int? level,
 		uint? jobId,
 		ulong? freeCompanyId,
-		string? freeCompanyName)
+		string? freeCompanyName,
+		bool freeCompanyKnown)
 	{
 		var existing = this.connection.Find<ResolvedCharacterRow>(key);
 		var row = existing ?? new ResolvedCharacterRow { Key = key };
@@ -143,8 +146,17 @@ public sealed partial class LodestoneCache : IDisposable
 		row.AvatarUrlHash = avatarUrlHash ?? row.AvatarUrlHash;
 		row.Level = level ?? row.Level;
 		row.JobId = jobId.HasValue ? (long)jobId.Value : row.JobId;
-		row.FreeCompanyId = freeCompanyId.HasValue ? (long)freeCompanyId.Value : row.FreeCompanyId;
-		row.FreeCompanyName = freeCompanyName ?? row.FreeCompanyName;
+		if (freeCompanyKnown && freeCompanyId == null)
+		{
+			row.FreeCompanyId = null;
+			row.FreeCompanyName = null;
+		}
+		else
+		{
+			row.FreeCompanyId =
+				freeCompanyId.HasValue ? (long)freeCompanyId.Value : row.FreeCompanyId;
+			row.FreeCompanyName = freeCompanyName ?? row.FreeCompanyName;
+		}
 
 		if (existing == null)
 		{

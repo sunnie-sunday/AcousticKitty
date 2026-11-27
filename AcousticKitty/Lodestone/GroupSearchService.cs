@@ -423,7 +423,8 @@ public sealed class GroupSearchService(
 			}
 		}
 
-		lodestoneCache.SaveResolvedIds(resolvedIdUpdates);
+		lodestoneCache.SaveResolvedIds(
+			resolvedIdUpdates, freeCompanyKnown: kind != SocialGroupKind.PvpTeam);
 
 		log.Verbose(
 			$"GroupSearchService.ResolveEntries: {entries.Count} member(s) processed in " +

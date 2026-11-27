@@ -217,7 +217,7 @@ public sealed class ProfileRefresh
 		this.lodestoneCache.SaveResolvedId(
 			key, pin.LodestoneId, profile.Name, profile.HomeWorldId, fetchedAtUtc,
 			profile.AvatarUrlHash, profile.Level, profile.JobId, profile.FreeCompanyId,
-			profile.FreeCompanyName);
+			profile.FreeCompanyName, freeCompanyKnown: !profile.IsPartiallyPrivate);
 		if (!this.lodestoneCache.SaveCachedProfile(key, profile, fetchedAtUtc))
 		{
 			this.log.Warning(ProfileRegressionGuard.LogMessage(profile.Name));

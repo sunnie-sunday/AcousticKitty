@@ -575,7 +575,8 @@ public sealed partial class NearbyCharactersService : IDisposable
 			this.lodestoneCache.SaveResolvedId(
 				cacheKey, lodestoneId.Value, known.Data.Name, known.Data.HomeWorldId, DateTime.UtcNow,
 				searchEntry?.AvatarUrlHash, searchEntry?.Level, searchEntry?.JobId,
-				searchEntry?.FreeCompanyId, searchEntry?.FreeCompanyName);
+				searchEntry?.FreeCompanyId, searchEntry?.FreeCompanyName,
+				freeCompanyKnown: searchEntry != null);
 
 			this.characterDirectory.SetLookupResult(
 				contentId, lodestoneId,
