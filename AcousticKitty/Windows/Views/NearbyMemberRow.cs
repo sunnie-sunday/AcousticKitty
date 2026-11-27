@@ -18,10 +18,12 @@ internal static class NearbyMemberRow
 		Dictionary<string, string> lodestoneIdInputs)
 	{
 		var data = member.KnownCharacter.Data;
-		var showsOverride = member.KnownCharacter.LookupState != NearbyLookupState.Found
-			&& member.KnownCharacter.LookupState != NearbyLookupState.AccessRestricted
-			&& member.KnownCharacter.LookupState != NearbyLookupState.Deleted
-			&& !member.IsConflicted;
+		var showsOverride = !member.IsConflicted && member.KnownCharacter.LookupState switch
+		{
+			NearbyLookupState.Pending => member.KnownCharacter.LodestoneId == null,
+			NearbyLookupState.NotFound or NearbyLookupState.Error => true,
+			_ => false,
+		};
 
 		var primaryLine = ProfileView.FormatPrimaryLine(
 			data, member.Profile, data.Name, member.WorldName, member.DataCenterName);
