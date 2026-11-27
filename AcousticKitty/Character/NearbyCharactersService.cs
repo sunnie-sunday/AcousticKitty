@@ -26,7 +26,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 	private static readonly TimeSpan PeriodicUpkeepInterval = TimeSpan.FromMinutes(15);
 	private static readonly TimeSpan NoWorkPollInterval = TimeSpan.FromSeconds(1);
 
-	private const int MaxQueueSnapshotSize = 5_000;
+	internal const int MaxQueueSnapshotSize = 5_000;
 
 	private readonly IPlayerState playerState;
 	private readonly IObjectTable objectTable;
