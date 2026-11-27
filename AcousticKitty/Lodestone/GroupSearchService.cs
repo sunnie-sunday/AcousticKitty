@@ -388,7 +388,7 @@ public sealed class GroupSearchService(
 
 			if (viewModel.KnownCharacter is {
 				LookupState: NearbyLookupState.Pending or NearbyLookupState.NotFound
-					or NearbyLookupState.Error,
+					or NearbyLookupState.Error or NearbyLookupState.Deleted,
 			} unresolved)
 			{
 				this.ResolveMatchedMember(unresolved.Data.ContentId, entry.CharacterId, kind);

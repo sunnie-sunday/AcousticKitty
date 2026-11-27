@@ -165,7 +165,8 @@ public sealed partial class CharacterDirectory : IDisposable
 			{
 				row.PriorityAtUtc = UtcTimestamp.Format(priorityAtUtc.Value);
 			}
-			else if (state is NearbyLookupState.NotFound or NearbyLookupState.AccessRestricted)
+			else if (state is NearbyLookupState.NotFound or NearbyLookupState.AccessRestricted
+				or NearbyLookupState.Deleted)
 			{
 				row.PriorityAtUtc =
 					UtcTimestamp.Format(DateTime.UtcNow + CharacterDirectory.RecheckCooldown);
@@ -406,7 +407,7 @@ public sealed partial class CharacterDirectory : IDisposable
 
 	private static bool IsRecheckDue(KnownCharacterRow row, DateTime seenUtc) =>
 		row.LookupState is (int)NearbyLookupState.NotFound
-			or (int)NearbyLookupState.AccessRestricted &&
+			or (int)NearbyLookupState.AccessRestricted or (int)NearbyLookupState.Deleted &&
 		(row.PriorityAtUtc == null || UtcTimestamp.Parse(row.PriorityAtUtc) <= seenUtc);
 
 	private static KnownCharacter ToKnownCharacter(KnownCharacterRow row) => new(
