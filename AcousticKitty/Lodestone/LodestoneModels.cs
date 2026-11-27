@@ -55,6 +55,18 @@ public enum SocialGroupKind
 	PvpTeam,
 }
 
+public static class SocialGroupKindExtensions
+{
+	public static string DisplayName(this SocialGroupKind kind) => kind switch
+	{
+		SocialGroupKind.FreeCompany => "Free Company",
+		SocialGroupKind.Linkshell => "Linkshell",
+		SocialGroupKind.CrossWorldLinkshell => "Cross-world Linkshell",
+		SocialGroupKind.PvpTeam => "PvP Team",
+		_ => kind.ToString(),
+	};
+}
+
 public enum GroupSearchMode
 {
 	Name,

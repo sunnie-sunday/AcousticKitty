@@ -8,6 +8,8 @@ using AcousticKitty.Character;
 
 namespace AcousticKitty.Lodestone;
 
+public sealed record RosterFetch(SocialGroupKind Kind, string GroupId, string Name);
+
 public enum GroupSearchState
 {
 	Idle,

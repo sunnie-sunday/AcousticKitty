@@ -32,10 +32,10 @@ public sealed class GroupSearchService(
 
 	private readonly CancellationTokenSource disposalCts = new();
 	private readonly object forceSearchGate = new();
-	private readonly HashSet<ulong> forceSearchedFreeCompanyIds = new();
+	private readonly HashSet<(SocialGroupKind Kind, string GroupId)> forceSearchedGroups = new();
 	private readonly SemaphoreSlim forceResolveGate = new(1, 1);
 	private readonly object activeRosterFetchesGate = new();
-	private readonly OrderedDictionary<ulong, string> activeRosterFetches = new();
+	private readonly List<RosterFetch> activeRosterFetches = new();
 
 	private volatile GroupSearchState state = GroupSearchState.Idle;
 	private string? errorMessage;
@@ -53,13 +53,13 @@ public sealed class GroupSearchService(
 	public IReadOnlyList<GroupSearchResult> GroupMatches => this.groupMatches;
 	public IReadOnlyList<GroupMemberViewModel> Members => this.members;
 
-	public IReadOnlyList<(ulong FreeCompanyId, string FreeCompanyName)> ActiveFreeCompanyRosterFetches
+	public IReadOnlyList<RosterFetch> ActiveRosterFetches
 	{
 		get
 		{
 			lock (this.activeRosterFetchesGate)
 			{
-				return this.activeRosterFetches.Select(pair => (pair.Key, pair.Value)).ToArray();
+				return this.activeRosterFetches.ToArray();
 			}
 		}
 	}
@@ -88,7 +88,13 @@ public sealed class GroupSearchService(
 		this.state = GroupSearchState.Idle;
 	}
 
-	internal async Task ForceResolveFreeCompanyRosterAsync(ulong freeCompanyId, string freeCompanyName)
+	internal Task ForceResolveFreeCompanyRosterAsync(ulong freeCompanyId, string freeCompanyName) =>
+		this.ForceResolveRosterAsync(
+			SocialGroupKind.FreeCompany, freeCompanyId.ToString(CultureInfo.InvariantCulture),
+			freeCompanyName);
+
+	internal async Task ForceResolveRosterAsync(
+		SocialGroupKind kind, string groupId, string groupName)
 	{
 		if (this.disposalCts.IsCancellationRequested)
 		{
@@ -98,13 +104,14 @@ public sealed class GroupSearchService(
 		var cancellationToken = this.disposalCts.Token;
 		lock (this.forceSearchGate)
 		{
-			if (!this.forceSearchedFreeCompanyIds.Add(freeCompanyId))
+			if (!this.forceSearchedGroups.Add((kind, groupId)))
 			{
 				return;
 			}
 		}
 
-		this.AddActiveRosterFetch(freeCompanyId, freeCompanyName);
+		var knownFreeCompanyId = GroupSearchService.ParseFreeCompanyId(kind, groupId);
+		var fetch = this.TrackRosterFetch(kind, groupId, groupName);
 		try
 		{
 			await this.forceResolveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -112,13 +119,10 @@ public sealed class GroupSearchService(
 			{
 				await client
 					.GetGroupRosterAsync(
-						SocialGroupKind.FreeCompany,
-						freeCompanyId.ToString(CultureInfo.InvariantCulture),
-						MaxRosterPages,
-						dataManager,
+						kind, groupId, MaxRosterPages, dataManager,
 						(pageEntries, resolvedFreeCompanyName) => this.ResolveEntries(
-							pageEntries, SocialGroupKind.FreeCompany, freeCompanyId,
-							resolvedFreeCompanyName ?? freeCompanyName, fromSearchTab: false,
+							pageEntries, kind, knownFreeCompanyId,
+							resolvedFreeCompanyName ?? groupName, fromSearchTab: false,
 							cancellationToken),
 						highPriority: false,
 						cancellationToken)
@@ -135,25 +139,25 @@ public sealed class GroupSearchService(
 		catch (LodestoneNotFoundException)
 		{
 			log.Information(
-				$"Free Company {freeCompanyName} ({freeCompanyId}) skipped after disbanding.");
+				$"{kind.DisplayName()} {groupName} ({groupId}) skipped after disbanding.");
 		}
 		catch (LodestoneUnavailableException ex)
 		{
 			lock (this.forceSearchGate)
 			{
-				this.forceSearchedFreeCompanyIds.Remove(freeCompanyId);
+				this.forceSearchedGroups.Remove((kind, groupId));
 			}
 
 			log.Warning(
-				$"Free Company {freeCompanyName} ({freeCompanyId}) roster interrupted: {ex.Message}");
+				$"{kind.DisplayName()} {groupName} ({groupId}) roster interrupted: {ex.Message}");
 		}
 		catch (Exception ex)
 		{
-			log.Error(ex, $"Failed to force-resolve Free Company roster {freeCompanyId}.");
+			log.Error(ex, $"Failed to force-resolve {kind.DisplayName()} roster {groupId}.");
 		}
 		finally
 		{
-			this.RemoveActiveRosterFetch(freeCompanyId);
+			this.UntrackRosterFetch(fetch);
 		}
 	}
 
@@ -270,17 +274,9 @@ public sealed class GroupSearchService(
 		this.state = GroupSearchState.FetchingRoster;
 		this.groupMatches = Array.Empty<GroupSearchResult>();
 
-		var knownFreeCompanyId =
-			kind == SocialGroupKind.FreeCompany && ulong.TryParse(groupId, out var fcId)
-				? fcId
-				: (ulong?)null;
-
-		var nameTracked = false;
-		if (knownFreeCompanyId is { } upfrontId && knownGroupName != null)
-		{
-			this.AddActiveRosterFetch(upfrontId, knownGroupName);
-			nameTracked = true;
-		}
+		var knownFreeCompanyId = GroupSearchService.ParseFreeCompanyId(kind, groupId);
+		var fetch = this.TrackRosterFetch(kind, groupId, knownGroupName ?? groupId);
+		var named = knownGroupName != null;
 
 		try
 		{
@@ -289,10 +285,10 @@ public sealed class GroupSearchService(
 					kind, groupId, MaxRosterPages, dataManager,
 					(pageEntries, freeCompanyName) =>
 					{
-						if (!nameTracked && knownFreeCompanyId is { } id && freeCompanyName != null)
+						if (!named && freeCompanyName != null)
 						{
-							this.AddActiveRosterFetch(id, freeCompanyName);
-							nameTracked = true;
+							fetch = this.RenameRosterFetch(fetch, freeCompanyName);
+							named = true;
 						}
 
 						this.AppendMembers(
@@ -305,28 +301,48 @@ public sealed class GroupSearchService(
 		}
 		finally
 		{
-			if (knownFreeCompanyId is { } idToRemove)
-			{
-				this.RemoveActiveRosterFetch(idToRemove);
-			}
+			this.UntrackRosterFetch(fetch);
 		}
 
 		this.state = this.members.Count == 0 ? GroupSearchState.NotFound : GroupSearchState.Ready;
 	}
 
-	private void AddActiveRosterFetch(ulong freeCompanyId, string freeCompanyName)
+	private static ulong? ParseFreeCompanyId(SocialGroupKind kind, string groupId) =>
+		kind == SocialGroupKind.FreeCompany && ulong.TryParse(groupId, out var freeCompanyId)
+			? freeCompanyId
+			: null;
+
+	private RosterFetch TrackRosterFetch(SocialGroupKind kind, string groupId, string name)
 	{
+		var fetch = new RosterFetch(kind, groupId, name);
 		lock (this.activeRosterFetchesGate)
 		{
-			this.activeRosterFetches[freeCompanyId] = freeCompanyName;
+			this.activeRosterFetches.Add(fetch);
 		}
+
+		return fetch;
 	}
 
-	private void RemoveActiveRosterFetch(ulong freeCompanyId)
+	private RosterFetch RenameRosterFetch(RosterFetch fetch, string name)
+	{
+		var renamed = fetch with { Name = name };
+		lock (this.activeRosterFetchesGate)
+		{
+			var index = this.activeRosterFetches.IndexOf(fetch);
+			if (index >= 0)
+			{
+				this.activeRosterFetches[index] = renamed;
+			}
+		}
+
+		return renamed;
+	}
+
+	private void UntrackRosterFetch(RosterFetch fetch)
 	{
 		lock (this.activeRosterFetchesGate)
 		{
-			this.activeRosterFetches.Remove(freeCompanyId);
+			this.activeRosterFetches.Remove(fetch);
 		}
 	}
 

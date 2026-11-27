@@ -24,8 +24,7 @@ internal sealed class QueuesTab(Plugin plugin)
 	private int rosterPage;
 
 	private readonly FilterCache<ProfileQueueRow> profileFilterCache = new();
-	private readonly FilterCache<(ulong FreeCompanyId, string FreeCompanyName)> rosterFilterCache =
-		new();
+	private readonly FilterCache<RosterFetch> rosterFilterCache = new();
 
 	private IReadOnlyList<NearbyMemberViewModel>? profileRowsQueue;
 	private int profileRowsPinCount = -1;
@@ -48,12 +47,12 @@ internal sealed class QueuesTab(Plugin plugin)
 			ImGui.EndTabItem();
 		}
 
-		var rosterFetches = plugin.GroupSearchService.ActiveFreeCompanyRosterFetches;
+		var rosterFetches = plugin.GroupSearchService.ActiveRosterFetches;
 		if (ImGui.BeginTabItem($"Rosters ({rosterFetches.Count})###QueuesRostersTab"))
 		{
 			QueuesTab.DrawQueue(
 				rosterFetches, "No roster is being fetched.", this.rosterFilterCache,
-				ref this.rosterNameFilter, ref this.rosterPage, fetch => fetch.FreeCompanyName,
+				ref this.rosterNameFilter, ref this.rosterPage, fetch => fetch.Name,
 				"RosterQueue", QueuesTab.DrawRosterRow);
 			ImGui.EndTabItem();
 		}
@@ -153,10 +152,11 @@ internal sealed class QueuesTab(Plugin plugin)
 		ImGui.TextColored(ImGuiColors.DalamudGrey3, $"{row.IdLabel} {row.Id}");
 	}
 
-	private static void DrawRosterRow((ulong FreeCompanyId, string FreeCompanyName) fetch)
+	private static void DrawRosterRow(RosterFetch fetch)
 	{
-		ImGui.TextUnformatted(fetch.FreeCompanyName);
-		ImGui.TextColored(ImGuiColors.DalamudGrey3, $"Free Company ID: {fetch.FreeCompanyId}");
+		ImGui.TextUnformatted(fetch.Name);
+		ImGui.TextColored(
+			ImGuiColors.DalamudGrey3, $"{fetch.Kind.DisplayName()} ID: {fetch.GroupId}");
 	}
 
 	private sealed record ProfileQueueRow(string Name, string WorldName, string IdLabel, ulong Id);
