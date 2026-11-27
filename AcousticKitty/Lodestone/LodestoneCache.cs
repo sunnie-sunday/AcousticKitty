@@ -359,13 +359,20 @@ public sealed partial class LodestoneCache : IDisposable
 	}
 
 	public void SavePinnedProfileSnapshot(
-		ulong lodestoneId, LodestoneProfile profile, DateTime? fetchedAtUtc) =>
+		ulong lodestoneId, LodestoneProfile profile, DateTime? fetchedAtUtc)
+	{
+		if (profile.LodestoneId != lodestoneId)
+		{
+			return;
+		}
+
 		this.Write(() => this.connection.InsertOrReplace(new PinnedProfileRow
 		{
 			Key = lodestoneId.ToString(CultureInfo.InvariantCulture),
 			ProfileJson = JsonSerializer.Serialize(profile),
 			FetchedAtUtc = fetchedAtUtc.HasValue ? UtcTimestamp.Format(fetchedAtUtc.Value) : null,
 		}));
+	}
 
 	public PinnedProfileSnapshot? TryGetPinnedProfileSnapshot(ulong lodestoneId) =>
 		this.Read<PinnedProfileSnapshot?>(
