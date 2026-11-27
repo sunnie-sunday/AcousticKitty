@@ -4,6 +4,7 @@
 // SPDX-FileContributor: Contributions by /xivg/
 
 using System;
+using System.Collections.Generic;
 using AcousticKitty.Lodestone;
 
 namespace AcousticKitty.Character;
@@ -18,7 +19,8 @@ public sealed class NearbyMemberViewModel(
 	string dataCenterName,
 	string jobAbbreviation,
 	DateTime? profileAsOfUtc = null,
-	bool isConflicted = false)
+	bool isConflicted = false,
+	IReadOnlyList<NameHistoryEntry>? nameHistory = null)
 {
 	public KnownCharacter KnownCharacter { get; } = knownCharacter;
 
@@ -39,4 +41,7 @@ public sealed class NearbyMemberViewModel(
 	public string DataCenterName { get; } = dataCenterName;
 
 	public string JobAbbreviation { get; } = jobAbbreviation;
+
+	public IReadOnlyList<NameHistoryEntry> NameHistory { get; } =
+		nameHistory ?? Array.Empty<NameHistoryEntry>();
 }

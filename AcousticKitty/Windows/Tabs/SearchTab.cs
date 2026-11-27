@@ -200,10 +200,7 @@ internal sealed class SearchTab(Plugin plugin)
 				member.Profile is { } profile ? new Lazy<LodestoneProfile>(() => profile) : null,
 				member.KnownCharacter?.Data,
 				member.KnownCharacter?.LastSeenUtc,
-				member.KnownCharacter is { } known
-					? new Lazy<IReadOnlyList<NameHistoryEntry>>(
-						() => plugin.GroupSearchService.GetNameHistory(known.Data.ContentId))
-					: null,
+				member.NameHistory,
 				member.ProfileFetchedAtUtc,
 				IsConflicted: member.IsConflicted));
 	}

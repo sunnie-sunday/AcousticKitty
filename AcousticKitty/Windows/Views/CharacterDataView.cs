@@ -16,7 +16,7 @@ internal static class CharacterDataView
 {
 	public static void Draw(
 		PlayerLocalData data, DateTime? lastSeenOrFetchedUtc, LodestoneProfile? compareProfile = null,
-		Lazy<IReadOnlyList<NameHistoryEntry>>? nameHistory = null)
+		IReadOnlyList<NameHistoryEntry>? nameHistory = null)
 	{
 		var dataManager = Plugin.DataManager;
 
@@ -30,7 +30,7 @@ internal static class CharacterDataView
 
 		if (nameHistory != null)
 		{
-			var otherNames = nameHistory.Value
+			var otherNames = nameHistory
 				.Where(entry => !string.IsNullOrEmpty(entry.Name))
 				.Select(entry => $"{entry.Name}@{entry.HomeWorldName}")
 				.ToArray();

@@ -64,9 +64,6 @@ public sealed class GroupSearchService(
 		}
 	}
 
-	public IReadOnlyList<NameHistoryEntry> GetNameHistory(ulong contentId) =>
-		characterDirectory.GetNameHistory(contentId);
-
 	public void StartSearch(
 		SocialGroupKind kind,
 		GroupSearchMode mode,
@@ -475,6 +472,19 @@ public sealed class GroupSearchService(
 
 		lodestoneCache.SaveResolvedIds(
 			resolvedIdUpdates, freeCompanyKnown: kind != SocialGroupKind.PvpTeam);
+
+		if (fromSearchTab)
+		{
+			var nameHistories = characterDirectory.GetNameHistories(
+				collected.Select(member => member.KnownCharacter?.Data.ContentId).OfType<ulong>());
+			foreach (var member in collected)
+			{
+				if (member.KnownCharacter is { } known)
+				{
+					member.NameHistory = nameHistories.GetValueOrDefault(known.Data.ContentId);
+				}
+			}
+		}
 
 		log.Verbose(
 			$"GroupSearchService.ResolveEntries: {entries.Count} member(s) processed in " +

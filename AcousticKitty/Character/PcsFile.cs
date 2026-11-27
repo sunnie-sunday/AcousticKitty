@@ -199,12 +199,14 @@ public sealed partial class NearbyCharactersService
 		var contentIds = imported.Select(item => item.Data.ContentId).ToArray();
 		this.characterDirectory.PrioritizeForLookup(contentIds, importUtc);
 
+		var nameHistories = this.characterDirectory.GetNameHistories(contentIds);
 		var importedViewModels = new List<NearbyMemberViewModel>(imported.Count);
 		foreach (var contentId in contentIds.Distinct())
 		{
 			if (this.characterDirectory.TryGetByContentId(contentId) is { } known)
 			{
-				importedViewModels.Add(this.BuildViewModel(known));
+				importedViewModels.Add(
+					this.BuildViewModel(known, nameHistories.GetValueOrDefault(contentId)));
 			}
 		}
 

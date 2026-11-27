@@ -25,7 +25,7 @@ internal sealed record CharacterRowData(
 	Lazy<LodestoneProfile>? Profile,
 	PlayerLocalData? CharacterData,
 	DateTime? CharacterDataAsOfUtc,
-	Lazy<IReadOnlyList<NameHistoryEntry>>? NameHistory = null,
+	IReadOnlyList<NameHistoryEntry>? NameHistory = null,
 	DateTime? ProfileAsOfUtc = null,
 	bool ShowsOverride = false,
 	bool IsConflicted = false);

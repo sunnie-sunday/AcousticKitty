@@ -60,7 +60,7 @@ internal static class NearbyMemberRow
 				member.Profile is { } profile ? new Lazy<LodestoneProfile>(() => profile) : null,
 				data,
 				member.KnownCharacter.LastSeenUtc,
-				new Lazy<IReadOnlyList<NameHistoryEntry>>(() => nearby.GetNameHistory(data.ContentId)),
+				member.NameHistory,
 				member.ProfileAsOfUtc,
 				showsOverride,
 				IsConflicted: member.IsConflicted));

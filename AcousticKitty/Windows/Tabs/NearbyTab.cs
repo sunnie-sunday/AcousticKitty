@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Threading.Tasks;
 using AcousticKitty.Character;
 using AcousticKitty.Windows.Views;
 using Dalamud.Bindings.ImGui;
@@ -18,7 +19,7 @@ namespace AcousticKitty.Windows.Tabs;
 
 internal sealed class NearbyTab(Plugin plugin, FileDialogManager fileDialogManager)
 {
-	private IReadOnlyList<NearbyMemberViewModel> displayedMembers =
+	private volatile IReadOnlyList<NearbyMemberViewModel> displayedMembers =
 		Array.Empty<NearbyMemberViewModel>();
 
 	private string nameFilter = string.Empty;
@@ -26,7 +27,8 @@ internal sealed class NearbyTab(Plugin plugin, FileDialogManager fileDialogManag
 
 	private readonly Dictionary<string, string> lodestoneIdInputs = new();
 
-	private string? importValidationError;
+	private volatile string? importValidationError;
+	private volatile bool isImporting;
 
 	public void Draw(bool justSelected)
 	{
@@ -79,47 +81,59 @@ internal sealed class NearbyTab(Plugin plugin, FileDialogManager fileDialogManag
 			refreshEnabled: true,
 			onRefresh: () => this.RefreshSnapshot(nearby),
 			refreshIdSuffix: "NearbyRefresh",
-			busyMessage: null,
+			busyMessage: this.isImporting ? "Importing..." : null,
 			extraButton: ("Import", this.OnImportClicked));
 	}
 
 	private void OnImportClicked()
 	{
+		if (this.isImporting)
+		{
+			return;
+		}
+
 		fileDialogManager.OpenFileDialog(
 			"Import Nearby Characters",
 			".json",
 			(isOk, path) =>
 			{
-				if (isOk)
+				if (isOk && !this.isImporting)
 				{
-					this.TryImport(path);
+					this.isImporting = true;
+					_ = Task.Run(() => this.TryImport(path));
 				}
 			});
 	}
 
 	private void TryImport(string path)
 	{
-		IReadOnlyList<PcsFile.ImportedCharacter> imported;
 		try
 		{
-			imported = PcsFile.Load(path);
+			var imported = PcsFile.Load(path);
+			if (imported.Count == 0)
+			{
+				this.importValidationError = "The file contained no characters.";
+				return;
+			}
+
+			this.importValidationError = null;
+			var nearby = plugin.NearbyCharactersService;
+			nearby.ImportSnapshots(imported);
+			this.RefreshSnapshot(nearby);
 		}
 		catch (PcsFileException ex)
 		{
 			this.importValidationError = ex.Message;
-			return;
 		}
-
-		if (imported.Count == 0)
+		catch (Exception ex)
 		{
-			this.importValidationError = "The file contained no characters.";
-			return;
+			Plugin.Log.Error(ex, "Failed to import nearby characters.");
+			this.importValidationError = "The import failed, see the log for details.";
 		}
-
-		this.importValidationError = null;
-		var nearby = plugin.NearbyCharactersService;
-		nearby.ImportSnapshots(imported);
-		this.RefreshSnapshot(nearby);
+		finally
+		{
+			this.isImporting = false;
+		}
 	}
 
 	private void RefreshSnapshot(NearbyCharactersService nearby) =>

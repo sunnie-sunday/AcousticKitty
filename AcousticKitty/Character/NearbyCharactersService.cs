@@ -107,9 +107,6 @@ public sealed partial class NearbyCharactersService : IDisposable
 
 	public bool QueueMightHaveMore => this.queue.Count >= MaxQueueSnapshotSize;
 
-	public IReadOnlyList<NameHistoryEntry> GetNameHistory(ulong contentId) =>
-		this.characterDirectory.GetNameHistory(contentId);
-
 	public bool IsDraining => this.drainingFlag != 0;
 
 	public void RunSearchOnce()
@@ -126,15 +123,26 @@ public sealed partial class NearbyCharactersService : IDisposable
 
 	public void QueueOverride(ulong contentId, ulong lodestoneId)
 	{
-		this.characterDirectory.QueueOverride(contentId, lodestoneId, DateTime.UtcNow);
-
-		this.lastQueueRebuildUtc = DateTime.MinValue;
-		this.RebuildQueueSnapshot();
-
-		if (this.configuration.NearbySearchMode == NearbySearchMode.Auto)
+		var queuedAtUtc = DateTime.UtcNow;
+		_ = Task.Run(() =>
 		{
-			this.RunSearchOnce();
-		}
+			try
+			{
+				this.characterDirectory.QueueOverride(contentId, lodestoneId, queuedAtUtc);
+
+				this.lastQueueRebuildUtc = DateTime.MinValue;
+				this.RebuildQueueSnapshot();
+
+				if (this.configuration.NearbySearchMode == NearbySearchMode.Auto)
+				{
+					this.RunSearchOnce();
+				}
+			}
+			catch (Exception ex)
+			{
+				this.log.Error(ex, $"Failed to queue Lodestone ID {lodestoneId} for {contentId}.");
+			}
+		});
 	}
 
 	public void Dispose()
@@ -224,12 +232,15 @@ public sealed partial class NearbyCharactersService : IDisposable
 
 		this.characterDirectory.PromoteMatureConflictHolds(scanUtc);
 
+		var nameHistories =
+			this.characterDirectory.GetNameHistories(snapshots.Select(data => data.ContentId));
 		var liveList = new List<NearbyMemberViewModel>(snapshots.Count);
 		foreach (var data in snapshots)
 		{
 			if (this.characterDirectory.TryGetByContentId(data.ContentId) is { } known)
 			{
-				liveList.Add(this.BuildViewModel(known));
+				liveList.Add(this.BuildViewModel(
+					known, nameHistories.GetValueOrDefault(data.ContentId)));
 			}
 		}
 
@@ -395,7 +406,8 @@ public sealed partial class NearbyCharactersService : IDisposable
 			known, false, null, null, isSearching, worldName, string.Empty, string.Empty);
 	}
 
-	private NearbyMemberViewModel BuildViewModel(KnownCharacter known)
+	private NearbyMemberViewModel BuildViewModel(
+		KnownCharacter known, IReadOnlyList<NameHistoryEntry>? nameHistory)
 	{
 		var cacheKey = CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId);
 		var isPinned = this.echoList.IsPinned(known.Data.ContentId, known.LodestoneId);
@@ -420,7 +432,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 		return new NearbyMemberViewModel(
 			known, isPinned, profile, avatarUrlHash, isSearching, worldName, dataCenterName,
 			jobAbbreviation, profileAsOfUtc,
-			known.LookupState == NearbyLookupState.ConflictHold);
+			known.LookupState == NearbyLookupState.ConflictHold, nameHistory);
 	}
 
 	private async Task DrainQueueAsync()

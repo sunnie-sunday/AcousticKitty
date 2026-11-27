@@ -344,8 +344,16 @@ public sealed partial class CharacterDirectory : IDisposable
 	public IReadOnlyList<string> GetHistoryWorldNames(ulong contentId) =>
 		this.nameHistory.GetHistoryWorldNames(contentId);
 
-	public IReadOnlyList<NameHistoryEntry> GetNameHistory(ulong contentId) =>
-		this.nameHistory.GetNameHistory(contentId);
+	public IReadOnlyDictionary<ulong, IReadOnlyList<NameHistoryEntry>> GetNameHistories(
+		IEnumerable<ulong> contentIds) =>
+		contentIds
+			.Select(id => (long)id)
+			.Distinct()
+			.Chunk(BulkQueryBatchSize)
+			.SelectMany(chunk => this.nameHistory.GetNameHistories(chunk))
+			.GroupBy(row => row.ContentId, row => row.Entry)
+			.ToDictionary(
+				group => group.Key, group => (IReadOnlyList<NameHistoryEntry>)group.ToArray());
 
 	public void Dispose()
 	{

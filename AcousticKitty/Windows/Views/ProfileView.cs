@@ -132,7 +132,7 @@ internal static class ProfileView
 
 	public static void DrawCollapsedBody(
 		LodestoneProfile profile, PlayerLocalData? compareData = null,
-		Lazy<IReadOnlyList<NameHistoryEntry>>? nameHistory = null, DateTime? fetchedAtUtc = null)
+		IReadOnlyList<NameHistoryEntry>? nameHistory = null, DateTime? fetchedAtUtc = null)
 	{
 		ProfileView.DrawIdentityFields(profile, compareData, fetchedAtUtc);
 		ProfileView.DrawTransfers(profile, nameHistory);
@@ -147,7 +147,7 @@ internal static class ProfileView
 	}
 
 	private static void DrawTransfers(
-		LodestoneProfile profile, Lazy<IReadOnlyList<NameHistoryEntry>>? nameHistory)
+		LodestoneProfile profile, IReadOnlyList<NameHistoryEntry>? nameHistory)
 	{
 		if (nameHistory == null)
 		{
@@ -155,7 +155,7 @@ internal static class ProfileView
 		}
 
 		var currentWorld = GameDataResolver.ResolveWorldName(Plugin.DataManager, profile.HomeWorldId);
-		var worlds = nameHistory.Value
+		var worlds = nameHistory
 			.Select(entry => entry.HomeWorldName)
 			.Append(currentWorld)
 			.Distinct(StringComparer.OrdinalIgnoreCase)

@@ -130,6 +130,8 @@ public sealed class DatabaseOverviewService(
 			lodestoneCache.GetCachedProfilesForKeys(nameWorldKeys).ToDictionary(cached => cached.Key);
 		var resolvedByKey =
 			lodestoneCache.GetResolvedForKeys(nameWorldKeys).ToDictionary(resolved => resolved.Key);
+		var nameHistories = characterDirectory.GetNameHistories(
+			pins.Select(row => row.Known?.Data.ContentId).OfType<ulong>());
 
 		var pinnedList = pins
 			.Zip(cacheKeys, (row, cacheKey) => (row.Pin, row.Known, CacheKey: cacheKey))
@@ -150,7 +152,7 @@ public sealed class DatabaseOverviewService(
 				var worldName = GameDataResolver.ResolveWorldName(dataManager, homeWorldId);
 				var dataCenterName = GameDataResolver.ResolveDataCenterName(dataManager, homeWorldId);
 				var nameHistory = known != null
-					? DatabaseOverviewService.LazyNameHistory(characterDirectory, known.Data.ContentId)
+					? nameHistories.GetValueOrDefault(known.Data.ContentId)
 					: null;
 
 				Lazy<LodestoneProfile>? profile;
@@ -207,6 +209,8 @@ public sealed class DatabaseOverviewService(
 			lodestoneCache.GetCachedProfilesForKeys(cacheKeys).ToDictionary(cached => cached.Key);
 		var resolvedByKey =
 			lodestoneCache.GetResolvedForKeys(cacheKeys).ToDictionary(resolved => resolved.Key);
+		var nameHistories =
+			characterDirectory.GetNameHistories(candidates.Select(known => known.Data.ContentId));
 
 		this.matched = candidates
 			.OrderByDescending(known => known.LastSeenUtc)
@@ -231,8 +235,7 @@ public sealed class DatabaseOverviewService(
 					cacheKey, known.Data.Name, worldName, false,
 					profile, profileFetchedAtUtc, known.Data, known.LastSeenUtc,
 					resolved?.AvatarUrlHash, dataCenterName,
-					NameHistory: DatabaseOverviewService.LazyNameHistory(
-						characterDirectory, known.Data.ContentId));
+					NameHistory: nameHistories.GetValueOrDefault(known.Data.ContentId));
 			}).ToArray();
 		log.Verbose(
 			$"Reloaded Database Matched tab: {this.matched.Count} in {stopwatch.ElapsedMilliseconds} ms.");
@@ -251,6 +254,8 @@ public sealed class DatabaseOverviewService(
 			.ToList();
 		var resolvedByKey =
 			lodestoneCache.GetResolvedForKeys(cacheKeys).ToDictionary(resolved => resolved.Key);
+		var nameHistories =
+			characterDirectory.GetNameHistories(hiddenKnown.Select(known => known.Data.ContentId));
 
 		var hiddenList = hiddenKnown
 			.OrderByDescending(known => known.LastSeenUtc)
@@ -264,8 +269,7 @@ public sealed class DatabaseOverviewService(
 				return new DatabaseEntryViewModel(
 					cacheKey, known.Data.Name, worldName, false,
 					null, null, known.Data, known.LastSeenUtc, resolved?.AvatarUrlHash, dataCenterName,
-					NameHistory: DatabaseOverviewService.LazyNameHistory(
-						characterDirectory, known.Data.ContentId));
+					NameHistory: nameHistories.GetValueOrDefault(known.Data.ContentId));
 			}).ToArray();
 
 		this.hidden = hiddenList;
@@ -336,8 +340,4 @@ public sealed class DatabaseOverviewService(
 		LodestoneProfile.BuildPartial(
 			pin.LodestoneId, pin.Name, pin.HomeWorldId, pin.AvatarUrlHash, pin.FreeCompanyId,
 			pin.FreeCompanyName, pin.JobId, pin.Level, isPrivate: false);
-
-	private static Lazy<IReadOnlyList<NameHistoryEntry>> LazyNameHistory(
-		CharacterDirectory characterDirectory, ulong contentId) =>
-		new(() => characterDirectory.GetNameHistory(contentId));
 }

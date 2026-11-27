@@ -4,6 +4,7 @@
 // SPDX-FileContributor: Contributions by /xivg/
 
 using System;
+using System.Collections.Generic;
 using AcousticKitty.Character;
 
 namespace AcousticKitty.Lodestone;
@@ -31,4 +32,5 @@ public sealed class GroupMemberViewModel(MemberListEntry entry)
 	public LodestoneProfile? Profile { get; internal set; }
 	public DateTime? ProfileFetchedAtUtc { get; internal set; }
 	public KnownCharacter? KnownCharacter { get; internal set; }
+	public IReadOnlyList<NameHistoryEntry>? NameHistory { get; internal set; }
 }

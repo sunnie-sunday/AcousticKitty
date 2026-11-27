@@ -23,6 +23,6 @@ public sealed record DatabaseEntryViewModel(
 	string? DataCenter = null,
 	string? JobAbbreviation = null,
 	string? LevelText = null,
-	Lazy<IReadOnlyList<NameHistoryEntry>>? NameHistory = null,
+	IReadOnlyList<NameHistoryEntry>? NameHistory = null,
 	bool IsConflicted = false,
 	string? AvatarWorld = null);

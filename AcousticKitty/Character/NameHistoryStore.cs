@@ -70,16 +70,18 @@ internal sealed partial class NameHistoryStore
 				.ToList(),
 			Array.Empty<string>());
 
-	public IReadOnlyList<NameHistoryEntry> GetNameHistory(ulong contentId) =>
-		this.Read<IReadOnlyList<NameHistoryEntry>>(
+	public IReadOnlyList<(ulong ContentId, NameHistoryEntry Entry)> GetNameHistories(
+		IReadOnlyList<long> contentIds) =>
+		this.Read<IReadOnlyList<(ulong ContentId, NameHistoryEntry Entry)>>(
 			() => this.connection.Table<NameHistoryRow>()
-				.Where(row => row.ContentId == (long)contentId)
+				.Where(row => contentIds.Contains(row.ContentId))
 				.OrderByDescending(row => row.SeenUntilUtc)
 				.ThenByDescending(row => row.Id)
-				.Select(row => new NameHistoryEntry(
-					row.Name, row.HomeWorldName, UtcTimestamp.Parse(row.SeenUntilUtc)))
+				.ToList()
+				.Select(row => ((ulong)row.ContentId, new NameHistoryEntry(
+					row.Name, row.HomeWorldName, UtcTimestamp.Parse(row.SeenUntilUtc))))
 				.ToArray(),
-			Array.Empty<NameHistoryEntry>());
+			Array.Empty<(ulong, NameHistoryEntry)>());
 
 	public void DeleteForContentIds(IReadOnlyList<long> contentIds) =>
 		this.Write(() =>
