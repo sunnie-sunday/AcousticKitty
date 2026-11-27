@@ -90,6 +90,12 @@ public sealed class GroupSearchService(
 
 	internal async Task ForceResolveFreeCompanyRosterAsync(ulong freeCompanyId, string freeCompanyName)
 	{
+		if (this.disposalCts.IsCancellationRequested)
+		{
+			return;
+		}
+
+		var cancellationToken = this.disposalCts.Token;
 		lock (this.forceSearchGate)
 		{
 			if (!this.forceSearchedFreeCompanyIds.Add(freeCompanyId))
@@ -101,7 +107,7 @@ public sealed class GroupSearchService(
 		this.AddActiveRosterFetch(freeCompanyId, freeCompanyName);
 		try
 		{
-			await this.forceResolveGate.WaitAsync(this.disposalCts.Token).ConfigureAwait(false);
+			await this.forceResolveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
 			try
 			{
 				await client
@@ -113,9 +119,9 @@ public sealed class GroupSearchService(
 						(pageEntries, resolvedFreeCompanyName) => this.ResolveEntries(
 							pageEntries, SocialGroupKind.FreeCompany, freeCompanyId,
 							resolvedFreeCompanyName ?? freeCompanyName, fromSearchTab: false,
-							this.disposalCts.Token),
+							cancellationToken),
 						highPriority: false,
-						this.disposalCts.Token)
+						cancellationToken)
 					.ConfigureAwait(false);
 			}
 			finally
