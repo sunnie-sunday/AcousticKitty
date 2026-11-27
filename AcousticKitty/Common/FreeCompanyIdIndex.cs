@@ -47,12 +47,12 @@ public sealed class FreeCompanyIdIndex
 		}
 	}
 
-	public void Record(
+	public bool Record(
 		string? freeCompanyTag, uint homeWorldId, ulong? freeCompanyId, string? freeCompanyName)
 	{
 		if (string.IsNullOrEmpty(freeCompanyTag) || freeCompanyId is not { } id || freeCompanyName == null)
 		{
-			return;
+			return false;
 		}
 
 		lock (this.gate)
@@ -63,7 +63,9 @@ public sealed class FreeCompanyIdIndex
 				this.index[(freeCompanyTag, homeWorldId)] = byId;
 			}
 
+			var isNew = !byId.ContainsKey(id);
 			byId[id] = freeCompanyName;
+			return isNew;
 		}
 	}
 

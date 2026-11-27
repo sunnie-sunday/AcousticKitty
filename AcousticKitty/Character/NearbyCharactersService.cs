@@ -574,9 +574,8 @@ public sealed partial class NearbyCharactersService : IDisposable
 
 			if (searchEntry != null)
 			{
-				this.freeCompanyIdIndex.Record(
-					known.Data.FreeCompanyTag, known.Data.HomeWorldId, searchEntry.FreeCompanyId,
-					searchEntry.FreeCompanyName);
+				this.RecordFreeCompanyTag(
+					known, searchEntry.FreeCompanyId, searchEntry.FreeCompanyName);
 			}
 			else if (profile != null)
 			{
@@ -584,9 +583,8 @@ public sealed partial class NearbyCharactersService : IDisposable
 				if (this.lodestoneCache.SaveCachedProfile(cacheKey, profile, fetchedAtUtc))
 				{
 					this.groupSearch.ApplyFetchedProfile(lodestoneId.Value, profile, fetchedAtUtc);
-					this.freeCompanyIdIndex.Record(
-						known.Data.FreeCompanyTag, known.Data.HomeWorldId, profile.FreeCompanyId,
-						profile.FreeCompanyName);
+					this.RecordFreeCompanyTag(
+						known, profile.FreeCompanyId, profile.FreeCompanyName);
 				}
 				else
 				{
@@ -709,6 +707,16 @@ public sealed partial class NearbyCharactersService : IDisposable
 		{
 			this.log.Warning(
 				$"Failed to discover a pinned character's world history: {ex.GetType()}: {ex.Message}");
+		}
+	}
+
+	private void RecordFreeCompanyTag(
+		KnownCharacter known, ulong? freeCompanyId, string? freeCompanyName)
+	{
+		if (this.freeCompanyIdIndex.Record(
+			known.Data.FreeCompanyTag, known.Data.HomeWorldId, freeCompanyId, freeCompanyName))
+		{
+			this.groupSearch.ForceResolveForHiddenWithTag(known, freeCompanyId, freeCompanyName);
 		}
 	}
 

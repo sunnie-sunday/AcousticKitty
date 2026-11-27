@@ -281,6 +281,16 @@ public sealed partial class CharacterDirectory : IDisposable
 				.Count(row => row.LookupState == (int)NearbyLookupState.NotFound),
 			0);
 
+	public bool HasHiddenWithFreeCompanyTag(
+		string freeCompanyTag, uint homeWorldId, ulong excludedContentId) =>
+		this.Read(
+			() => this.connection.Table<KnownCharacterRow>()
+				.Where(row => row.LookupState == (int)NearbyLookupState.NotFound &&
+					row.FreeCompanyTag == freeCompanyTag && row.HomeWorldId == homeWorldId &&
+					row.ContentId != (long)excludedContentId)
+				.Count() > 0,
+			false);
+
 	public IReadOnlyList<KnownCharacter> GetHidden() =>
 		this.Read<IReadOnlyList<KnownCharacter>>(
 			() => this.connection.Table<KnownCharacterRow>()

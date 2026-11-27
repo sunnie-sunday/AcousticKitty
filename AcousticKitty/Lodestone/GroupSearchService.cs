@@ -157,6 +157,18 @@ public sealed class GroupSearchService(
 		}
 	}
 
+	internal void ForceResolveForHiddenWithTag(
+		KnownCharacter source, ulong? freeCompanyId, string? freeCompanyName)
+	{
+		if (source.Data.FreeCompanyTag is { Length: > 0 } tag && freeCompanyId is { } id &&
+			freeCompanyName != null &&
+			characterDirectory.HasHiddenWithFreeCompanyTag(
+				tag, source.Data.HomeWorldId, source.Data.ContentId))
+		{
+			_ = this.ForceResolveFreeCompanyRosterAsync(id, freeCompanyName);
+		}
+	}
+
 	internal void ApplyFetchedProfile(
 		ulong lodestoneId, LodestoneProfile profile, DateTime fetchedAtUtc)
 	{
@@ -398,9 +410,14 @@ public sealed class GroupSearchService(
 
 			if (viewModel.KnownCharacter is { } matchedCharacter)
 			{
-				freeCompanyIdIndex.Record(
-					matchedCharacter.Data.FreeCompanyTag, matchedCharacter.Data.HomeWorldId,
-					entry.FreeCompanyId, entry.FreeCompanyName);
+				if (freeCompanyIdIndex.Record(
+						matchedCharacter.Data.FreeCompanyTag, matchedCharacter.Data.HomeWorldId,
+						entry.FreeCompanyId, entry.FreeCompanyName) &&
+					kind != SocialGroupKind.FreeCompany)
+				{
+					this.ForceResolveForHiddenWithTag(
+						matchedCharacter, entry.FreeCompanyId, entry.FreeCompanyName);
+				}
 			}
 
 			if (viewModel.KnownCharacter is {
