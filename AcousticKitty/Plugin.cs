@@ -115,7 +115,7 @@ public sealed class Plugin : IDalamudPlugin
 			Log);
 		this.DatabaseOverviewService = new DatabaseOverviewService(
 			this.lodestoneCache, this.echoList, this.characterDirectory, DataManager, PlayerState,
-			this.GroupSearchService, this.freeCompanyIdIndex, this.Configuration, Log);
+			this.Configuration, Log);
 
 		this.mainWindow = new MainWindow(this);
 

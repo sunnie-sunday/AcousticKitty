@@ -253,22 +253,12 @@ public sealed partial class NearbyCharactersService : IDisposable
 
 		this.lastPeriodicUpkeepUtc = now;
 
-		this.ForceResolveHiddenViaFreeCompanies();
-
 		var cap = DatabaseCapEnforcer.ResolveCap(this.configuration.DatabaseCacheTier);
 		DatabaseCapEnforcer.EnforceHidden(this.characterDirectory, this.echoList, cap);
 		DatabaseCapEnforcer.EnforceUnseen(
 			this.characterDirectory, this.lodestoneCache, this.echoList, cap);
 		DatabaseCapEnforcer.EnforceMatched(
 			this.characterDirectory, this.lodestoneCache, this.echoList, cap);
-	}
-
-	private void ForceResolveHiddenViaFreeCompanies()
-	{
-		foreach (var known in this.characterDirectory.GetHidden())
-		{
-			this.TryForceResolveViaKnownFreeCompany(known);
-		}
 	}
 
 	private static unsafe PlayerLocalData? SnapshotCharacter(
