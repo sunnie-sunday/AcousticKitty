@@ -525,6 +525,12 @@ public sealed class GroupSearchService(
 
 	private void ResolveMatchedMember(ulong contentId, ulong lodestoneId, SocialGroupKind kind)
 	{
+		var pinnedLodestoneId = echoList.TryGetByContentId(contentId)?.LodestoneId;
+		if (pinnedLodestoneId != null && pinnedLodestoneId != lodestoneId)
+		{
+			return;
+		}
+
 		if (kind == SocialGroupKind.PvpTeam)
 		{
 			characterDirectory.SetLookupResult(
@@ -533,11 +539,16 @@ public sealed class GroupSearchService(
 			return;
 		}
 
-		if (!characterDirectory.HoldIfLodestoneIdTaken(contentId, lodestoneId, DateTime.UtcNow))
+		if (pinnedLodestoneId == lodestoneId)
 		{
-			characterDirectory.SetLookupResult(
-				contentId, lodestoneId, NearbyLookupState.Found, null);
+			characterDirectory.ReleaseLodestoneId(lodestoneId, contentId, DateTime.UtcNow);
 		}
+		else if (characterDirectory.HoldIfLodestoneIdTaken(contentId, lodestoneId, DateTime.UtcNow))
+		{
+			return;
+		}
+
+		characterDirectory.SetLookupResult(contentId, lodestoneId, NearbyLookupState.Found, null);
 	}
 
 	#endregion

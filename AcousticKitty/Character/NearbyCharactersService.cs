@@ -357,9 +357,12 @@ public sealed partial class NearbyCharactersService : IDisposable
 		}
 
 		this.lodestoneCache.DeleteCharacters(new[] { nameWorldKey });
-		this.characterDirectory.SetLookupResult(
-			data.ContentId, null, NearbyLookupState.ConflictHold, null,
-			priorityAtUtc: seenUtc + CharacterDirectory.ReuseHoldDuration);
+		if (!this.echoList.IsPinned(data.ContentId, null))
+		{
+			this.characterDirectory.SetLookupResult(
+				data.ContentId, null, NearbyLookupState.ConflictHold, null,
+				priorityAtUtc: seenUtc + CharacterDirectory.ReuseHoldDuration);
+		}
 	}
 
 	private void RebuildQueueSnapshot()
@@ -569,7 +572,12 @@ public sealed partial class NearbyCharactersService : IDisposable
 				lodestoneId = searchEntry.CharacterId;
 			}
 
-			if (this.characterDirectory.HoldIfLodestoneIdTaken(
+			if (this.echoList.TryGetByContentId(contentId)?.LodestoneId == lodestoneId)
+			{
+				this.characterDirectory.ReleaseLodestoneId(
+					lodestoneId.Value, contentId, DateTime.UtcNow);
+			}
+			else if (this.characterDirectory.HoldIfLodestoneIdTaken(
 				contentId, lodestoneId.Value, DateTime.UtcNow))
 			{
 				return;

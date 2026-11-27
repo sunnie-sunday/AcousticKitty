@@ -98,6 +98,24 @@ public sealed partial class CharacterDirectory : IDisposable
 		return true;
 	}
 
+	public void ReleaseLodestoneId(ulong lodestoneId, ulong keptContentId, DateTime priorityAtUtc)
+	{
+		var id = (long)lodestoneId;
+		var kept = (long)keptContentId;
+		var holders = this.Read<IReadOnlyList<ulong>>(
+			() => this.connection.Table<KnownCharacterRow>()
+				.Where(row => row.LodestoneId == id && row.ContentId != kept)
+				.Select(row => (ulong)row.ContentId)
+				.ToArray(),
+			Array.Empty<ulong>());
+		foreach (var contentId in holders)
+		{
+			this.SetLookupResult(
+				contentId, null, NearbyLookupState.Pending, null, clearOverride: false,
+				priorityAtUtc: priorityAtUtc);
+		}
+	}
+
 	public KnownCharacter? TryGetByLodestoneId(ulong lodestoneId) =>
 		this.Read<KnownCharacter?>(
 			() =>
