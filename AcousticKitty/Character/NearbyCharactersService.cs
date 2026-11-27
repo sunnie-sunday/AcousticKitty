@@ -337,7 +337,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 		{
 			if (priorHolder.LodestoneId is { } priorLodestoneId)
 			{
-				this.SavePinnedSnapshot(
+				this.lodestoneCache.SavePinnedProfileSnapshot(
 					priorLodestoneId, nameWorldKey,
 					priorHolder.LookupState == NearbyLookupState.AccessRestricted);
 			}
@@ -665,7 +665,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 			}
 			else if (this.echoList.IsPinnedLodestoneId(cachedId))
 			{
-				this.SavePinnedSnapshot(cachedId, cacheKey, isPrivate: false);
+				this.lodestoneCache.SavePinnedProfileSnapshot(cachedId, cacheKey, isPrivate: false);
 			}
 		}
 
@@ -677,7 +677,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 	{
 		if (this.echoList.IsPinned(known.Data.ContentId, lodestoneId))
 		{
-			this.SavePinnedSnapshot(
+			this.lodestoneCache.SavePinnedProfileSnapshot(
 				lodestoneId, CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId),
 				known.LookupState == NearbyLookupState.AccessRestricted);
 		}
@@ -685,16 +685,6 @@ public sealed partial class NearbyCharactersService : IDisposable
 		this.characterDirectory.SetLookupResult(
 			known.Data.ContentId, lodestoneId, NearbyLookupState.Deleted, null);
 		this.log.Information($"{known.Data.Name} was deleted from The Lodestone ({lodestoneId}).");
-	}
-
-	private void SavePinnedSnapshot(ulong lodestoneId, string cacheKey, bool isPrivate)
-	{
-		var (profile, fetchedAtUtc) =
-			this.lodestoneCache.ResolveProfileOrPartial(cacheKey, isPrivate);
-		if (profile != null)
-		{
-			this.lodestoneCache.SavePinnedProfileSnapshot(lodestoneId, profile, fetchedAtUtc);
-		}
 	}
 
 	private void QueuePinnedFetchIfUnresolved(ulong contentId, DateTime scanUtc)

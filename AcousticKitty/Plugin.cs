@@ -81,6 +81,7 @@ public sealed class Plugin : IDalamudPlugin
 			this.LodestoneClient,
 			this.lodestoneCache,
 			this.echoList,
+			this.characterDirectory,
 			this.Configuration,
 			PluginInterface.Manifest.AssemblyVersion.ToString(),
 			DataManager,

@@ -358,6 +358,15 @@ public sealed partial class LodestoneCache : IDisposable
 		return result;
 	}
 
+	public void SavePinnedProfileSnapshot(ulong lodestoneId, string cacheKey, bool isPrivate)
+	{
+		var (profile, fetchedAtUtc) = this.ResolveProfileOrPartial(cacheKey, isPrivate);
+		if (profile != null)
+		{
+			this.SavePinnedProfileSnapshot(lodestoneId, profile, fetchedAtUtc);
+		}
+	}
+
 	public void SavePinnedProfileSnapshot(
 		ulong lodestoneId, LodestoneProfile profile, DateTime? fetchedAtUtc)
 	{
