@@ -322,11 +322,11 @@ public sealed partial class NearbyCharactersService : IDisposable
 			data.Name, data.HomeWorldId, known.LodestoneId);
 	}
 
-	private void HandleNameReuseIfDetected(PlayerLocalData data, DateTime nowUtc)
+	private void HandleNameReuseIfDetected(PlayerLocalData data, DateTime seenUtc)
 	{
 		var nameWorldKey = CharacterKey.Build(data.Name, data.HomeWorldId);
 		var priorHolder = this.characterDirectory.TryGetActiveHolder(nameWorldKey, data.ContentId);
-		if (priorHolder == null)
+		if (priorHolder == null || priorHolder.LastSeenUtc > seenUtc)
 		{
 			return;
 		}
@@ -358,7 +358,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 		this.lodestoneCache.DeleteCharacters(new[] { nameWorldKey });
 		this.characterDirectory.SetLookupResult(
 			data.ContentId, null, NearbyLookupState.ConflictHold, null,
-			priorityAtUtc: nowUtc + CharacterDirectory.ReuseHoldDuration);
+			priorityAtUtc: seenUtc + CharacterDirectory.ReuseHoldDuration);
 	}
 
 	private void RebuildQueueSnapshot()

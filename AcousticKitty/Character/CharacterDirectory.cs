@@ -327,6 +327,10 @@ public sealed partial class CharacterDirectory : IDisposable
 	public void RecordNameHistory(ulong contentId, string name, string homeWorldName, DateTime seenUntilUtc) =>
 		this.nameHistory.RecordNameHistory(contentId, name, homeWorldName, seenUntilUtc);
 
+	public void RecordPastName(
+		ulong contentId, string name, string homeWorldName, DateTime seenUntilUtc) =>
+		this.nameHistory.RecordPastName(contentId, name, homeWorldName, seenUntilUtc);
+
 	public IReadOnlyList<string> GetHistoryWorldNames(ulong contentId) =>
 		this.nameHistory.GetHistoryWorldNames(contentId);
 

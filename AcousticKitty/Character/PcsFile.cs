@@ -142,7 +142,10 @@ public sealed partial class CharacterDirectory
 				foreach (var contentId in contentIds)
 				{
 					var row = this.connection.Find<KnownCharacterRow>((long)contentId);
-					if (row == null)
+					if (row?.LookupState is not ((int)NearbyLookupState.Pending
+						or (int)NearbyLookupState.NotFound
+						or (int)NearbyLookupState.AccessRestricted
+						or (int)NearbyLookupState.Error))
 					{
 						continue;
 					}
@@ -166,7 +169,13 @@ public sealed partial class NearbyCharactersService
 		}
 
 		var importUtc = DateTime.UtcNow;
-		var rows = imported.Select(item =>
+		var newer = imported
+			.GroupBy(item => item.Data.ContentId)
+			.Select(group => group.MaxBy(item => item.TimeSeenUtc)!)
+			.Where(item => this.characterDirectory.TryGetByContentId(item.Data.ContentId) is not
+				{ } known || known.LastSeenUtc < item.TimeSeenUtc)
+			.ToHashSet();
+		var rows = newer.Select(item =>
 		{
 			this.RecordRenameIfChanged(item.Data);
 			var nameWorldKey = CharacterKey.Build(item.Data.Name, item.Data.HomeWorldId);
@@ -175,13 +184,25 @@ public sealed partial class NearbyCharactersService
 
 		this.characterDirectory.UpsertSnapshots(rows);
 
+		foreach (var item in newer)
+		{
+			this.HandleNameReuseIfDetected(item.Data, item.TimeSeenUtc);
+		}
+
+		foreach (var item in imported.Where(item => !newer.Contains(item)))
+		{
+			this.RecordPastName(item);
+		}
+
+		this.characterDirectory.PromoteMatureConflictHolds(importUtc);
+
 		var contentIds = imported.Select(item => item.Data.ContentId).ToArray();
 		this.characterDirectory.PrioritizeForLookup(contentIds, importUtc);
 
 		var importedViewModels = new List<NearbyMemberViewModel>(imported.Count);
-		foreach (var item in imported)
+		foreach (var contentId in contentIds.Distinct())
 		{
-			if (this.characterDirectory.TryGetByContentId(item.Data.ContentId) is { } known)
+			if (this.characterDirectory.TryGetByContentId(contentId) is { } known)
 			{
 				importedViewModels.Add(this.BuildViewModel(known));
 			}
@@ -201,5 +222,19 @@ public sealed partial class NearbyCharactersService
 		{
 			this.RunSearchOnce();
 		}
+	}
+
+	private void RecordPastName(PcsFile.ImportedCharacter item)
+	{
+		if (this.characterDirectory.TryGetByContentId(item.Data.ContentId) is not { } known ||
+			(known.Data.Name == item.Data.Name && known.Data.HomeWorldId == item.Data.HomeWorldId))
+		{
+			return;
+		}
+
+		this.characterDirectory.RecordPastName(
+			item.Data.ContentId, item.Data.Name,
+			GameDataResolver.ResolveWorldName(this.dataManager, item.Data.HomeWorldId),
+			item.TimeSeenUtc);
 	}
 }
