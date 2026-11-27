@@ -165,8 +165,7 @@ public sealed class ProfileRefresh
 		{
 			this.UpdateRowState(pin, NearbyLookupState.AccessRestricted);
 		}
-		catch (LodestoneNotFoundException) when (
-			this.characterDirectory.TryGetByLodestoneId(pin.LodestoneId) is { } known)
+		catch (LodestoneNotFoundException) when (this.TryGetPinRow(pin) is { } known)
 		{
 			this.lodestoneCache.SavePinnedProfileSnapshot(
 				pin.LodestoneId, CharacterKey.Build(known.Data.Name, known.Data.HomeWorldId),
@@ -199,16 +198,27 @@ public sealed class ProfileRefresh
 
 	private void UpdateRowState(PinnedCharacter pin, NearbyLookupState state)
 	{
-		if (this.characterDirectory.TryGetByLodestoneId(pin.LodestoneId) is {
-				LookupState: NearbyLookupState.Found or NearbyLookupState.AccessRestricted
-					or NearbyLookupState.Deleted,
-			} known &&
-			known.LookupState != state)
+		if (this.TryGetPinRow(pin) is { } known &&
+			known.LookupState != state &&
+			(known.LodestoneId == null ||
+				known.LookupState is NearbyLookupState.Found or NearbyLookupState.AccessRestricted
+					or NearbyLookupState.Deleted))
 		{
 			this.characterDirectory.SetLookupResult(
 				known.Data.ContentId, pin.LodestoneId, state, null);
 		}
 	}
+
+	private KnownCharacter? TryGetPinRow(PinnedCharacter pin) =>
+		this.characterDirectory.TryGetByLodestoneId(pin.LodestoneId) ??
+		(pin.ContentId is { } contentId &&
+			this.characterDirectory.TryGetByContentId(contentId) is {
+				LodestoneId: null,
+				LookupState: NearbyLookupState.Pending or NearbyLookupState.NotFound
+					or NearbyLookupState.Error,
+			} unresolved
+				? unresolved
+				: null);
 
 	private void Save(PinnedCharacter pin, LodestoneProfile profile)
 	{

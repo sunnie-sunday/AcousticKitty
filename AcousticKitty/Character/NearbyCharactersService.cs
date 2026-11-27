@@ -506,6 +506,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 				}
 
 				if (profile != null &&
+					this.echoList.TryGetByContentId(contentId)?.LodestoneId != overrideId &&
 					(profile.Name != known.Data.Name ||
 						profile.HomeWorldId != known.Data.HomeWorldId))
 				{

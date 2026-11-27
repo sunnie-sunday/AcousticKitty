@@ -156,6 +156,7 @@ public sealed class DatabaseOverviewService(
 				Lazy<LodestoneProfile>? profile;
 				DateTime? profileFetchedAtUtc;
 				string? avatarUrlHash;
+				string? avatarWorldName = null;
 				if (usesSnapshot)
 				{
 					var snapshot = lodestoneCache.TryGetPinnedProfileSnapshot(pin.LodestoneId);
@@ -163,12 +164,14 @@ public sealed class DatabaseOverviewService(
 					profileFetchedAtUtc = snapshot?.FetchedAtUtc;
 					avatarUrlHash = snapshot?.Profile.AvatarUrlHash;
 				}
-				else if (known == null && cached == null && resolved == null)
+				else if (cached == null && resolved == null)
 				{
 					var partial = DatabaseOverviewService.BuildReportProfile(pin);
 					profile = new Lazy<LodestoneProfile>(() => partial);
 					profileFetchedAtUtc = null;
 					avatarUrlHash = pin.AvatarUrlHash;
+					avatarWorldName =
+						GameDataResolver.ResolveWorldName(dataManager, pin.HomeWorldId);
 				}
 				else
 				{
@@ -180,7 +183,8 @@ public sealed class DatabaseOverviewService(
 				return new DatabaseEntryViewModel(
 					cacheKey, name, worldName, true, profile, profileFetchedAtUtc,
 					known?.Data, known?.LastSeenUtc, avatarUrlHash, dataCenterName,
-					NameHistory: nameHistory, IsConflicted: isTransferred);
+					NameHistory: nameHistory, IsConflicted: isTransferred,
+					AvatarWorld: avatarWorldName);
 			}).ToArray();
 
 		this.pinned = pinnedList;
