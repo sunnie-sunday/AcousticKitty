@@ -301,7 +301,7 @@ public sealed class GroupSearchService(
 			this.UntrackRosterFetch(fetch);
 		}
 
-		this.state = this.members.Count == 0 ? GroupSearchState.NotFound : GroupSearchState.Ready;
+		this.state = this.members.Count == 0 ? GroupSearchState.NoMembers : GroupSearchState.Ready;
 	}
 
 	private static ulong? ParseFreeCompanyId(SocialGroupKind kind, string groupId) =>

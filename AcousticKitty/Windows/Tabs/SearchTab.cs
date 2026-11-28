@@ -98,6 +98,9 @@ internal sealed class SearchTab(Plugin plugin)
 			case GroupSearchState.SearchingGroups:
 				ImGui.TextWrapped("Searching...");
 				return;
+			case GroupSearchState.NoMembers:
+				ImGui.TextWrapped("This group has no members.");
+				return;
 			case GroupSearchState.NotFound:
 				ImGui.TextColored(ImGuiColors.ErrorForeground, "No matching group found.");
 				return;

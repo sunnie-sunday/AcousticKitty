@@ -18,6 +18,7 @@ public enum GroupSearchState
 	AwaitingSelection,
 	FetchingRoster,
 	Ready,
+	NoMembers,
 	NotFound,
 	Error,
 }
