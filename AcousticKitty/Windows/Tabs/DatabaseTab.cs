@@ -32,6 +32,7 @@ internal sealed class DatabaseTab(Plugin plugin)
 	private int unseenPage;
 
 	private DatabaseSubTab? lastDrawnSubTab;
+	private int reloadedHiddenResolvedCount;
 
 	private readonly FilterCache<DatabaseEntryViewModel> pinnedFilterCache = new();
 	private readonly FilterCache<DatabaseEntryViewModel> matchedFilterCache = new();
@@ -103,7 +104,12 @@ internal sealed class DatabaseTab(Plugin plugin)
 
 		if (activeSubTab is { } active && (justSelected || this.lastDrawnSubTab != active))
 		{
-			DatabaseTab.ReloadSubTab(overview, active);
+			this.ReloadSubTab(overview, active);
+		}
+		else if (activeSubTab == DatabaseSubTab.Hidden &&
+			plugin.GroupSearchService.ResolvedHiddenCount != this.reloadedHiddenResolvedCount)
+		{
+			this.ReloadHidden(overview);
 		}
 
 		this.lastDrawnSubTab = activeSubTab ?? this.lastDrawnSubTab;
@@ -112,7 +118,7 @@ internal sealed class DatabaseTab(Plugin plugin)
 	private string TabLabel(string name, int count, DatabaseSubTab tab) =>
 		this.lastDrawnSubTab == tab ? $"{name} ({count})" : name;
 
-	private static void ReloadSubTab(DatabaseOverviewService overview, DatabaseSubTab tab)
+	private void ReloadSubTab(DatabaseOverviewService overview, DatabaseSubTab tab)
 	{
 		switch (tab)
 		{
@@ -123,12 +129,23 @@ internal sealed class DatabaseTab(Plugin plugin)
 				overview.ReloadMatchedAsync();
 				break;
 			case DatabaseSubTab.Hidden:
-				overview.ReloadHiddenAsync();
+				this.ReloadHidden(overview);
 				break;
 			case DatabaseSubTab.Unseen:
 				overview.ReloadUnseenAsync();
 				break;
 		}
+	}
+
+	private void ReloadHidden(DatabaseOverviewService overview)
+	{
+		if (overview.IsReloadingHidden)
+		{
+			return;
+		}
+
+		this.reloadedHiddenResolvedCount = plugin.GroupSearchService.ResolvedHiddenCount;
+		overview.ReloadHiddenAsync();
 	}
 
 	private static bool IsReloadingSubTab(DatabaseOverviewService overview, DatabaseSubTab tab) => tab switch
@@ -159,7 +176,7 @@ internal sealed class DatabaseTab(Plugin plugin)
 			{
 				if (currentSubTab is { } activeTab)
 				{
-					DatabaseTab.ReloadSubTab(overview, activeTab);
+					this.ReloadSubTab(overview, activeTab);
 				}
 			},
 			refreshIdSuffix: "DatabaseRefresh",

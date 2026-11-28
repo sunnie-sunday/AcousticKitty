@@ -43,6 +43,7 @@ public sealed class GroupSearchService(
 	private volatile IReadOnlyList<GroupMemberViewModel> members = Array.Empty<GroupMemberViewModel>();
 	private SocialGroupKind currentKind;
 	private CancellationTokenSource? searchCts;
+	private int resolvedHiddenCount;
 
 	#region Public API
 
@@ -52,6 +53,8 @@ public sealed class GroupSearchService(
 
 	public IReadOnlyList<GroupSearchResult> GroupMatches => this.groupMatches;
 	public IReadOnlyList<GroupMemberViewModel> Members => this.members;
+
+	public int ResolvedHiddenCount => Volatile.Read(ref this.resolvedHiddenCount);
 
 	public IReadOnlyList<RosterFetch> ActiveRosterFetches
 	{
@@ -446,6 +449,11 @@ public sealed class GroupSearchService(
 			{
 				this.ResolveMatchedMember(unresolved.Data.ContentId, entry.CharacterId, kind);
 				viewModel.KnownCharacter = characterDirectory.TryGetByContentId(unresolved.Data.ContentId);
+				if (unresolved.LookupState == NearbyLookupState.NotFound &&
+					viewModel.KnownCharacter?.LookupState != NearbyLookupState.NotFound)
+				{
+					Interlocked.Increment(ref this.resolvedHiddenCount);
+				}
 			}
 
 			viewModel.IsPinned = echoList.IsPinnedLodestoneId(entry.CharacterId) ||
