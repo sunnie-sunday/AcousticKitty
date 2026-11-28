@@ -418,6 +418,20 @@ public sealed class GroupSearchService(
 					characterDirectory.TryGetByContentId(matchedByLodestoneId.Data.ContentId);
 			}
 
+			if (viewModel.KnownCharacter is {
+				LookupState: NearbyLookupState.Pending or NearbyLookupState.NotFound
+					or NearbyLookupState.Error or NearbyLookupState.Deleted,
+			} unresolved)
+			{
+				this.ResolveMatchedMember(unresolved.Data.ContentId, entry.CharacterId, kind);
+				viewModel.KnownCharacter = characterDirectory.TryGetByContentId(unresolved.Data.ContentId);
+				if (unresolved.LookupState == NearbyLookupState.NotFound &&
+					viewModel.KnownCharacter?.LookupState != NearbyLookupState.NotFound)
+				{
+					Interlocked.Increment(ref this.resolvedHiddenCount);
+				}
+			}
+
 			if (viewModel.KnownCharacter is { LookupState: NearbyLookupState.ConflictHold })
 			{
 				viewModel.IsConflicted = true;
@@ -439,20 +453,6 @@ public sealed class GroupSearchService(
 				{
 					this.ForceResolveForHiddenWithTag(
 						matchedCharacter, entry.FreeCompanyId, entry.FreeCompanyName);
-				}
-			}
-
-			if (viewModel.KnownCharacter is {
-				LookupState: NearbyLookupState.Pending or NearbyLookupState.NotFound
-					or NearbyLookupState.Error or NearbyLookupState.Deleted,
-			} unresolved)
-			{
-				this.ResolveMatchedMember(unresolved.Data.ContentId, entry.CharacterId, kind);
-				viewModel.KnownCharacter = characterDirectory.TryGetByContentId(unresolved.Data.ContentId);
-				if (unresolved.LookupState == NearbyLookupState.NotFound &&
-					viewModel.KnownCharacter?.LookupState != NearbyLookupState.NotFound)
-				{
-					Interlocked.Increment(ref this.resolvedHiddenCount);
 				}
 			}
 
