@@ -17,7 +17,6 @@ public sealed class NearbyMemberViewModel(
 	bool isSearching,
 	string worldName,
 	string dataCenterName,
-	string jobAbbreviation,
 	DateTime? profileAsOfUtc = null,
 	bool isConflicted = false,
 	IReadOnlyList<NameHistoryEntry>? nameHistory = null)
@@ -39,8 +38,6 @@ public sealed class NearbyMemberViewModel(
 	public string WorldName { get; } = worldName;
 
 	public string DataCenterName { get; } = dataCenterName;
-
-	public string JobAbbreviation { get; } = jobAbbreviation;
 
 	public IReadOnlyList<NameHistoryEntry> NameHistory { get; } =
 		nameHistory ?? Array.Empty<NameHistoryEntry>();

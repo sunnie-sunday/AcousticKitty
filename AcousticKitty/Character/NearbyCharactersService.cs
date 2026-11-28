@@ -399,7 +399,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 		var worldName = GameDataResolver.ResolveWorldName(this.dataManager, known.Data.HomeWorldId);
 		var isSearching = known.Data.ContentId == this.activeContentIdOrZero;
 		return new NearbyMemberViewModel(
-			known, false, null, null, isSearching, worldName, string.Empty, string.Empty);
+			known, false, null, null, isSearching, worldName, string.Empty);
 	}
 
 	private NearbyMemberViewModel BuildViewModel(
@@ -422,13 +422,11 @@ public sealed partial class NearbyCharactersService : IDisposable
 		var worldName = GameDataResolver.ResolveWorldName(this.dataManager, known.Data.HomeWorldId);
 		var dataCenterName =
 			GameDataResolver.ResolveDataCenterName(this.dataManager, known.Data.HomeWorldId);
-		var jobAbbreviation = GameDataResolver.ResolveJobAbbreviation(this.dataManager, known.Data.JobId);
 
 		var isSearching = known.Data.ContentId == this.activeContentIdOrZero;
 		return new NearbyMemberViewModel(
 			known, isPinned, profile, avatarUrlHash, isSearching, worldName, dataCenterName,
-			jobAbbreviation, profileAsOfUtc,
-			known.LookupState == NearbyLookupState.ConflictHold, nameHistory);
+			profileAsOfUtc, known.LookupState == NearbyLookupState.ConflictHold, nameHistory);
 	}
 
 	private async Task DrainQueueAsync()
@@ -578,8 +576,7 @@ public sealed partial class NearbyCharactersService : IDisposable
 
 			this.lodestoneCache.SaveResolvedId(
 				cacheKey, lodestoneId.Value, known.Data.Name, known.Data.HomeWorldId, DateTime.UtcNow,
-				searchEntry?.AvatarUrlHash, searchEntry?.Level, searchEntry?.JobId,
-				searchEntry?.FreeCompanyId, searchEntry?.FreeCompanyName,
+				searchEntry?.AvatarUrlHash, searchEntry?.FreeCompanyId, searchEntry?.FreeCompanyName,
 				freeCompanyKnown: searchEntry != null);
 
 			this.characterDirectory.SetLookupResult(

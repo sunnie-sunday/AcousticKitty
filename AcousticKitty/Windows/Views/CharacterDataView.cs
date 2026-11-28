@@ -54,10 +54,8 @@ internal static class CharacterDataView
 			ProfileView.DrawField("Title", $"<{title}>");
 		}
 
-		ProfileView.DrawField(
-			"Job",
-			$"{GameDataResolver.ResolveJobAbbreviation(dataManager, data.JobId)} (Lv. {data.Level})",
-			compareProfile != null && ProfileView.JobDrifted(data, compareProfile));
+		var job = GameDataResolver.ResolveJobAbbreviation(dataManager, data.JobId);
+		ProfileView.DrawField("Job", $"{job} (Lv. {data.Level})");
 
 		if (data.FreeCompanyTag is { } tag)
 		{

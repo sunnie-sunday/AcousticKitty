@@ -311,33 +311,24 @@ public sealed class DatabaseOverviewService(
 
 		if (row.Cached is { } cached)
 		{
-			var resolved = row.Resolved;
-			var jobAbbreviation = resolved?.JobId is { } jobId
-				? GameDataResolver.ResolveJobAbbreviation(dataManager, jobId)
-				: null;
 			var entry = new DatabaseEntryViewModel(
 				row.Key, row.Name, worldName, false,
 				cached.Profile, cached.FetchedAtUtc, null, null,
-				resolved?.AvatarUrlHash, dataCenterName, jobAbbreviation,
-				resolved?.Level?.ToString());
+				row.Resolved?.AvatarUrlHash, dataCenterName);
 			return (entry, row.Timestamp);
 		}
 
 		var onlyResolved = row.Resolved!;
-		var resolvedJobAbbreviation = onlyResolved.JobId is { } resolvedJobId
-			? GameDataResolver.ResolveJobAbbreviation(dataManager, resolvedJobId)
-			: null;
 		var (profile, profileFetchedAtUtc) = LodestoneProfile.ResolveOrPartial(
 			null, onlyResolved, isPrivate: false);
 		var resolvedEntry = new DatabaseEntryViewModel(
 			row.Key, onlyResolved.Name, worldName, false,
-			profile, profileFetchedAtUtc, null, null, onlyResolved.AvatarUrlHash, dataCenterName,
-			resolvedJobAbbreviation, onlyResolved.Level?.ToString());
+			profile, profileFetchedAtUtc, null, null, onlyResolved.AvatarUrlHash, dataCenterName);
 		return (resolvedEntry, row.Timestamp);
 	}
 
 	private static LodestoneProfile BuildReportProfile(PinnedCharacter pin) =>
 		LodestoneProfile.BuildPartial(
 			pin.LodestoneId, pin.Name, pin.HomeWorldId, pin.AvatarUrlHash, pin.FreeCompanyId,
-			pin.FreeCompanyName, pin.JobId, pin.Level, isPrivate: false);
+			pin.FreeCompanyName, isPrivate: false);
 }

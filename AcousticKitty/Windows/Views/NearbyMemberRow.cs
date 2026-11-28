@@ -27,8 +27,7 @@ internal static class NearbyMemberRow
 
 		var primaryLine = ProfileView.FormatPrimaryLine(
 			data, member.Profile, data.Name, member.WorldName, member.DataCenterName);
-		var badge = ProfileView.FormatJobLine(
-			data, member.Profile, member.JobAbbreviation, data.Level.ToString());
+		var badge = ProfileView.FormatJobLine(data);
 
 		var statusMessage = member.KnownCharacter.LookupState switch
 		{

@@ -11,21 +11,17 @@ namespace AcousticKitty.Lodestone;
 public sealed record LodestoneProfile(
 	ulong LodestoneId,
 	string Name,
-	uint? TitleId,
 	uint HomeWorldId,
 	string? AvatarUrlHash,
 	bool IsPartiallyPrivate,
-	string Gender,
 	ulong? FreeCompanyId,
-	string? FreeCompanyName,
-	uint? JobId = null,
-	int? Level = null)
+	string? FreeCompanyName)
 {
 	public static LodestoneProfile BuildPartial(
 		ulong lodestoneId, string name, uint homeWorldId, string? avatarUrlHash,
-		ulong? freeCompanyId, string? freeCompanyName, uint? jobId, int? level, bool isPrivate) =>
-		new(lodestoneId, name, TitleId: null, homeWorldId, avatarUrlHash, IsPartiallyPrivate: isPrivate,
-			Gender: string.Empty, freeCompanyId, freeCompanyName, jobId, level);
+		ulong? freeCompanyId, string? freeCompanyName, bool isPrivate) =>
+		new(lodestoneId, name, homeWorldId, avatarUrlHash, IsPartiallyPrivate: isPrivate,
+			freeCompanyId, freeCompanyName);
 
 	public static (Lazy<LodestoneProfile>? Profile, DateTime? FetchedAtUtc) ResolveOrPartial(
 		CachedProfileEntry? cached, ResolvedCharacterEntry? resolved, bool isPrivate)
@@ -42,7 +38,7 @@ public sealed record LodestoneProfile(
 
 		var partial = LodestoneProfile.BuildPartial(
 			resolved.LodestoneId, resolved.Name, resolved.HomeWorldId, resolved.AvatarUrlHash,
-			resolved.FreeCompanyId, resolved.FreeCompanyName, resolved.JobId, resolved.Level, isPrivate);
+			resolved.FreeCompanyId, resolved.FreeCompanyName, isPrivate);
 		return (new Lazy<LodestoneProfile>(() => partial), null);
 	}
 }
@@ -88,8 +84,6 @@ public sealed record ResolvedCharacterEntry(
 	ulong LodestoneId,
 	DateTime ResolvedAtUtc,
 	string? AvatarUrlHash,
-	int? Level,
-	uint? JobId,
 	ulong? FreeCompanyId = null,
 	string? FreeCompanyName = null);
 
@@ -100,8 +94,6 @@ public sealed record MemberListEntry(
 	string Name,
 	uint HomeWorldId,
 	string? AvatarUrlHash,
-	int? Level,
-	uint? JobId,
 	ulong? FreeCompanyId,
 	string? FreeCompanyName);
 

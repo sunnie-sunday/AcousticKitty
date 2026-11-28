@@ -179,11 +179,7 @@ internal sealed class SearchTab(Plugin plugin)
 			member.KnownCharacter?.Data, member.Profile, member.Entry.Name, fallbackWorld,
 			fallbackDataCenter);
 
-		var fallbackJobAbbreviation = member.Entry.JobId is { } jobId
-			? GameDataResolver.ResolveJobAbbreviation(dataManager, jobId)
-			: null;
-		var badge = ProfileView.FormatJobLine(
-			member.KnownCharacter?.Data, null, fallbackJobAbbreviation, member.Entry.Level?.ToString());
+		var badge = ProfileView.FormatJobLine(member.KnownCharacter?.Data);
 
 		var statusMessage =
 			member.KnownCharacter?.LookupState == NearbyLookupState.AccessRestricted

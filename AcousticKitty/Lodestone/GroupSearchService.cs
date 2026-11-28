@@ -372,8 +372,7 @@ public sealed class GroupSearchService(
 
 		var resolvedIdUpdates = new List<(
 			string Key, ulong LodestoneId, string Name, uint HomeWorldId, DateTime ResolvedAtUtc,
-			string? AvatarUrlHash, int? Level, uint? JobId, ulong? FreeCompanyId,
-			string? FreeCompanyName)>(entries.Count);
+			string? AvatarUrlHash, ulong? FreeCompanyId, string? FreeCompanyName)>(entries.Count);
 
 		var ownNameWorldKey = playerState.IsLoaded
 			? CharacterKey.Build(playerState.CharacterName, playerState.HomeWorld.RowId)
@@ -392,7 +391,7 @@ public sealed class GroupSearchService(
 			{
 				viewModel.Profile = LodestoneProfile.BuildPartial(
 					entry.CharacterId, entry.Name, entry.HomeWorldId, entry.AvatarUrlHash,
-					entry.FreeCompanyId, entry.FreeCompanyName, entry.JobId, entry.Level, isPrivate: false);
+					entry.FreeCompanyId, entry.FreeCompanyName, isPrivate: false);
 				collected.Add(viewModel);
 				continue;
 			}
@@ -442,7 +441,7 @@ public sealed class GroupSearchService(
 
 			resolvedIdUpdates.Add((
 				cacheKey, entry.CharacterId, entry.Name, entry.HomeWorldId, DateTime.UtcNow,
-				entry.AvatarUrlHash, entry.Level, entry.JobId, entry.FreeCompanyId, entry.FreeCompanyName));
+				entry.AvatarUrlHash, entry.FreeCompanyId, entry.FreeCompanyName));
 
 			if (viewModel.KnownCharacter is { } matchedCharacter)
 			{
@@ -466,7 +465,7 @@ public sealed class GroupSearchService(
 			{
 				viewModel.Profile = LodestoneProfile.BuildPartial(
 					entry.CharacterId, entry.Name, entry.HomeWorldId, entry.AvatarUrlHash,
-					entry.FreeCompanyId, entry.FreeCompanyName, entry.JobId, entry.Level,
+					entry.FreeCompanyId, entry.FreeCompanyName,
 					viewModel.KnownCharacter?.LookupState == NearbyLookupState.AccessRestricted);
 			}
 

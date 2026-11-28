@@ -95,8 +95,6 @@ public sealed class EchoList
 				row.Name,
 				worldId,
 				row.AvatarUrlHash,
-				GameDataResolver.TryResolveJobId(dataManager, row.Job),
-				row.Level,
 				row.FreeCompanyId is { } freeCompanyId ? (ulong)freeCompanyId : null,
 				row.FreeCompanyName));
 		}
@@ -226,8 +224,8 @@ public sealed class ProfileRefresh
 		var fetchedAtUtc = DateTime.UtcNow;
 		this.lodestoneCache.SaveResolvedId(
 			key, pin.LodestoneId, profile.Name, profile.HomeWorldId, fetchedAtUtc,
-			profile.AvatarUrlHash, profile.Level, profile.JobId, profile.FreeCompanyId,
-			profile.FreeCompanyName, freeCompanyKnown: !profile.IsPartiallyPrivate);
+			profile.AvatarUrlHash, profile.FreeCompanyId, profile.FreeCompanyName,
+			freeCompanyKnown: !profile.IsPartiallyPrivate);
 		if (!this.lodestoneCache.SaveCachedProfile(key, profile, fetchedAtUtc))
 		{
 			this.log.Warning(ProfileRegressionGuard.LogMessage(profile.Name));

@@ -132,22 +132,6 @@ public static class GameDataResolver
 		}
 	}
 
-	private static Dictionary<string, uint>? jobAbbreviationToIdCache;
-	private static readonly object JobAbbreviationToIdGate = new();
-
-	public static uint? TryResolveJobId(IDataManager dataManager, string abbreviation)
-	{
-		lock (JobAbbreviationToIdGate)
-		{
-			jobAbbreviationToIdCache ??= dataManager.GetExcelSheet<ClassJob>(ClientLanguage.English)
-				.Where(job => !string.IsNullOrEmpty(job.Abbreviation.ToString()))
-				.GroupBy(job => job.Abbreviation.ToString())
-				.ToDictionary(group => group.Key, group => group.First().RowId);
-
-			return jobAbbreviationToIdCache.TryGetValue(abbreviation, out var id) ? id : null;
-		}
-	}
-
 	public static string? ResolveTitleName(IDataManager dataManager, uint titleId, string gender)
 	{
 		if (titleId == 0)
@@ -163,45 +147,6 @@ public static class GameDataResolver
 
 		var text = gender == "F" ? row.Value.Feminine : row.Value.Masculine;
 		return text.ToString();
-	}
-
-	private static Dictionary<(string Text, string Gender), uint>? titleGenderedNameToIdCache;
-	private static Dictionary<string, uint>? titleNameToIdCache;
-	private static readonly object TitleNameToIdGate = new();
-
-	public static uint? TryResolveTitleId(IDataManager dataManager, string titleName, string gender)
-	{
-		lock (TitleNameToIdGate)
-		{
-			if (titleGenderedNameToIdCache == null)
-			{
-				titleGenderedNameToIdCache = new Dictionary<(string, string), uint>();
-				titleNameToIdCache = new Dictionary<string, uint>();
-				foreach (var row in dataManager.GetExcelSheet<Title>(ClientLanguage.English))
-				{
-					var masculine = row.Masculine.ToString();
-					var feminine = row.Feminine.ToString();
-					if (!string.IsNullOrEmpty(masculine))
-					{
-						titleGenderedNameToIdCache.TryAdd((masculine, "M"), row.RowId);
-						titleNameToIdCache.TryAdd(masculine, row.RowId);
-					}
-
-					if (!string.IsNullOrEmpty(feminine))
-					{
-						titleGenderedNameToIdCache.TryAdd((feminine, "F"), row.RowId);
-						titleNameToIdCache.TryAdd(feminine, row.RowId);
-					}
-				}
-			}
-
-			if (titleGenderedNameToIdCache.TryGetValue((titleName, gender), out var id))
-			{
-				return id;
-			}
-
-			return titleNameToIdCache!.TryGetValue(titleName, out var fallbackId) ? fallbackId : null;
-		}
 	}
 
 	private const uint PrivateHousingIntendedUse = 14;

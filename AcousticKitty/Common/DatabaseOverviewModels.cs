@@ -21,8 +21,6 @@ public sealed record DatabaseEntryViewModel(
 	DateTime? CharacterDataAsOfUtc,
 	string? AvatarUrlHash = null,
 	string? DataCenter = null,
-	string? JobAbbreviation = null,
-	string? LevelText = null,
 	IReadOnlyList<NameHistoryEntry>? NameHistory = null,
 	bool IsConflicted = false,
 	string? AvatarWorld = null);

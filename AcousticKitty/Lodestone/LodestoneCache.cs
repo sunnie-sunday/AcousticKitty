@@ -58,8 +58,7 @@ public sealed partial class LodestoneCache : IDisposable
 				var row = this.connection.Find<ResolvedCharacterRow>(key);
 				return row == null ? null : new ResolvedCharacterEntry(
 					row.Key, row.Name, (uint)row.HomeWorldId, (ulong)row.LodestoneId,
-					UtcTimestamp.Parse(row.ResolvedAtUtc), row.AvatarUrlHash, row.Level,
-					row.JobId.HasValue ? (uint)row.JobId.Value : null,
+					UtcTimestamp.Parse(row.ResolvedAtUtc), row.AvatarUrlHash,
 					row.FreeCompanyId.HasValue ? (ulong)row.FreeCompanyId.Value : null,
 					row.FreeCompanyName);
 			},
@@ -91,20 +90,17 @@ public sealed partial class LodestoneCache : IDisposable
 		uint homeWorldId,
 		DateTime resolvedAtUtc,
 		string? avatarUrlHash = null,
-		int? level = null,
-		uint? jobId = null,
 		ulong? freeCompanyId = null,
 		string? freeCompanyName = null,
 		bool freeCompanyKnown = false) =>
 		this.Write(() => this.UpsertResolvedRow(
-			key, lodestoneId, name, homeWorldId, resolvedAtUtc, avatarUrlHash, level, jobId,
-			freeCompanyId, freeCompanyName, freeCompanyKnown));
+			key, lodestoneId, name, homeWorldId, resolvedAtUtc, avatarUrlHash, freeCompanyId,
+			freeCompanyName, freeCompanyKnown));
 
 	public void SaveResolvedIds(
 		IReadOnlyList<(
 			string Key, ulong LodestoneId, string Name, uint HomeWorldId, DateTime ResolvedAtUtc,
-			string? AvatarUrlHash, int? Level, uint? JobId, ulong? FreeCompanyId,
-			string? FreeCompanyName)> updates,
+			string? AvatarUrlHash, ulong? FreeCompanyId, string? FreeCompanyName)> updates,
 		bool freeCompanyKnown)
 	{
 		if (updates.Count == 0)
@@ -118,8 +114,8 @@ public sealed partial class LodestoneCache : IDisposable
 			{
 				this.UpsertResolvedRow(
 					update.Key, update.LodestoneId, update.Name, update.HomeWorldId,
-					update.ResolvedAtUtc, update.AvatarUrlHash, update.Level, update.JobId,
-					update.FreeCompanyId, update.FreeCompanyName, freeCompanyKnown);
+					update.ResolvedAtUtc, update.AvatarUrlHash, update.FreeCompanyId,
+					update.FreeCompanyName, freeCompanyKnown);
 			}
 		}));
 	}
@@ -131,8 +127,6 @@ public sealed partial class LodestoneCache : IDisposable
 		uint homeWorldId,
 		DateTime resolvedAtUtc,
 		string? avatarUrlHash,
-		int? level,
-		uint? jobId,
 		ulong? freeCompanyId,
 		string? freeCompanyName,
 		bool freeCompanyKnown)
@@ -144,8 +138,6 @@ public sealed partial class LodestoneCache : IDisposable
 		row.HomeWorldId = homeWorldId;
 		row.ResolvedAtUtc = UtcTimestamp.Format(resolvedAtUtc);
 		row.AvatarUrlHash = avatarUrlHash ?? row.AvatarUrlHash;
-		row.Level = level ?? row.Level;
-		row.JobId = jobId.HasValue ? (long)jobId.Value : row.JobId;
 		if (freeCompanyKnown && freeCompanyId == null)
 		{
 			row.FreeCompanyId = null;
@@ -226,8 +218,7 @@ public sealed partial class LodestoneCache : IDisposable
 		return resolved != null
 			? (LodestoneProfile.BuildPartial(
 				resolved.LodestoneId, resolved.Name, resolved.HomeWorldId, resolved.AvatarUrlHash,
-				resolved.FreeCompanyId, resolved.FreeCompanyName, resolved.JobId, resolved.Level,
-				isPrivate), null)
+				resolved.FreeCompanyId, resolved.FreeCompanyName, isPrivate), null)
 			: (null, null);
 	}
 
@@ -236,19 +227,12 @@ public sealed partial class LodestoneCache : IDisposable
 			() =>
 			{
 				var existing = this.connection.Find<CachedProfileRow>(key);
-				LodestoneProfile? previous = null;
-				if (existing != null)
+				var previous = existing != null
+					? JsonSerializer.Deserialize<LodestoneProfile>(existing.ProfileJson)
+					: null;
+				if (previous != null && ProfileRegressionGuard.IsRegression(profile, previous))
 				{
-					previous = JsonSerializer.Deserialize<LodestoneProfile>(existing.ProfileJson);
-					if (previous != null && ProfileRegressionGuard.IsRegression(profile, previous))
-					{
-						return false;
-					}
-				}
-
-				if (profile.JobId == null && previous?.JobId != null)
-				{
-					profile = profile with { JobId = previous.JobId, Level = previous.Level };
+					return false;
 				}
 
 				this.connection.InsertOrReplace(new CachedProfileRow
@@ -287,7 +271,6 @@ public sealed partial class LodestoneCache : IDisposable
 				.Select(row => new ResolvedCharacterEntry(
 					row.Key, row.Name, (uint)row.HomeWorldId, (ulong)row.LodestoneId,
 					UtcTimestamp.Parse(row.ResolvedAtUtc), row.AvatarUrlHash,
-					row.Level, row.JobId.HasValue ? (uint)row.JobId.Value : null,
 					row.FreeCompanyId.HasValue ? (ulong)row.FreeCompanyId.Value : null,
 					row.FreeCompanyName))
 				.ToArray(),
@@ -338,7 +321,6 @@ public sealed partial class LodestoneCache : IDisposable
 					.Select(row => new ResolvedCharacterEntry(
 						row.Key, row.Name, (uint)row.HomeWorldId, (ulong)row.LodestoneId,
 						UtcTimestamp.Parse(row.ResolvedAtUtc), row.AvatarUrlHash,
-						row.Level, row.JobId.HasValue ? (uint)row.JobId.Value : null,
 						row.FreeCompanyId.HasValue ? (ulong)row.FreeCompanyId.Value : null,
 						row.FreeCompanyName)));
 			}
@@ -367,7 +349,6 @@ public sealed partial class LodestoneCache : IDisposable
 					.Select(row => new ResolvedCharacterEntry(
 						row.Key, row.Name, (uint)row.HomeWorldId, (ulong)row.LodestoneId,
 						UtcTimestamp.Parse(row.ResolvedAtUtc), row.AvatarUrlHash,
-						row.Level, row.JobId.HasValue ? (uint)row.JobId.Value : null,
 						row.FreeCompanyId.HasValue ? (ulong)row.FreeCompanyId.Value : null,
 						row.FreeCompanyName)));
 			}

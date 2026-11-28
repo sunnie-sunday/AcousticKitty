@@ -227,8 +227,7 @@ internal sealed class DatabaseTab(Plugin plugin)
 	{
 		var primaryLine = ProfileView.FormatPrimaryLine(
 			entry.CharacterData, entry.Profile?.Value, entry.Name, entry.World, entry.DataCenter);
-		var badge = ProfileView.FormatJobLine(
-			entry.CharacterData, entry.Profile?.Value, entry.JobAbbreviation, entry.LevelText);
+		var badge = ProfileView.FormatJobLine(entry.CharacterData);
 
 		var (rowStartX, rowStartY, availWidth) = RowOverlay.CaptureStart();
 

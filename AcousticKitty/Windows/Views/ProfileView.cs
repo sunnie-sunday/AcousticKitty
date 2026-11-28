@@ -85,8 +85,7 @@ internal static class ProfileView
 		var dataManager = Plugin.DataManager;
 		var world = GameDataResolver.ResolveWorldName(dataManager, profile.HomeWorldId);
 		var dataCenter = GameDataResolver.ResolveDataCenterName(dataManager, profile.HomeWorldId);
-		var title = GameDataResolver.ResolveTitleName(dataManager, profile.TitleId ?? 0, profile.Gender);
-		return ProfileView.FormatPrimaryLine(profile.Name, title, world, dataCenter);
+		return ProfileView.FormatPrimaryLine(profile.Name, null, world, dataCenter);
 	}
 
 	public static string FormatPrimaryLine(
@@ -127,9 +126,6 @@ internal static class ProfileView
 	public static bool HomeWorldDrifted(PlayerLocalData data, LodestoneProfile profile) =>
 		data.HomeWorldId != profile.HomeWorldId;
 
-	public static bool JobDrifted(PlayerLocalData data, LodestoneProfile profile) =>
-		profile.JobId is { } jobId && (jobId != data.JobId || profile.Level != data.Level);
-
 	public static void DrawCollapsedBody(
 		LodestoneProfile profile, PlayerLocalData? compareData = null,
 		IReadOnlyList<NameHistoryEntry>? nameHistory = null, DateTime? fetchedAtUtc = null)
@@ -139,11 +135,11 @@ internal static class ProfileView
 
 		if (profile.IsPartiallyPrivate)
 		{
-			ProfileView.DrawPrivateNotice(profile, compareData);
+			ImGui.TextColored(ImGuiColors.ErrorForeground, "This character's profile is private.");
 			return;
 		}
 
-		ProfileView.DrawCoreFields(profile, compareData);
+		ProfileView.DrawCoreFields(profile);
 	}
 
 	private static void DrawTransfers(
@@ -185,62 +181,18 @@ internal static class ProfileView
 		}
 	}
 
-	public static string? FormatJobLine(string? jobAbbreviation, string? levelText) =>
-		jobAbbreviation switch
-		{
-			null => null,
-			var job when levelText != null => $"{job} (Lv. {levelText})",
-			var job => job,
-		};
-
-	public static string? FormatJobLine(LodestoneProfile profile)
-	{
-		var jobAbbreviation = profile.JobId is { } jobId
-			? GameDataResolver.ResolveJobAbbreviation(Plugin.DataManager, jobId)
+	public static string? FormatJobLine(PlayerLocalData? data) =>
+		data != null
+			? $"{GameDataResolver.ResolveJobAbbreviation(Plugin.DataManager, data.JobId)} " +
+				$"(Lv. {data.Level})"
 			: null;
-		return ProfileView.FormatJobLine(jobAbbreviation, profile.Level?.ToString());
-	}
 
-	public static string? FormatJobLine(
-		PlayerLocalData? data, LodestoneProfile? profile,
-		string? fallbackJobAbbreviation, string? fallbackLevelText)
+	private static void DrawCoreFields(LodestoneProfile profile)
 	{
-		if (data != null)
-		{
-			var jobAbbreviation = GameDataResolver.ResolveJobAbbreviation(Plugin.DataManager, data.JobId);
-			return ProfileView.FormatJobLine(jobAbbreviation, data.Level.ToString());
-		}
-
-		return profile != null
-			? ProfileView.FormatJobLine(profile)
-			: ProfileView.FormatJobLine(fallbackJobAbbreviation, fallbackLevelText);
-	}
-
-	private static void DrawCoreFields(LodestoneProfile profile, PlayerLocalData? compareData)
-	{
-		if (ProfileView.FormatJobLine(profile) is { } jobLine)
-		{
-			ProfileView.DrawField(
-				"Current Job", jobLine,
-				compareData != null && ProfileView.JobDrifted(compareData, profile));
-		}
-
 		if (profile.FreeCompanyName != null)
 		{
 			ProfileView.DrawField("Free Company", profile.FreeCompanyName);
 			ProfileView.DrawField("Free Company ID", profile.FreeCompanyId?.ToString() ?? "unknown");
-		}
-
-	}
-
-	private static void DrawPrivateNotice(LodestoneProfile profile, PlayerLocalData? compareData)
-	{
-		ImGui.TextColored(ImGuiColors.ErrorForeground, "This character's profile is private.");
-		if (ProfileView.FormatJobLine(profile) is { } jobLine)
-		{
-			ProfileView.DrawField(
-				"Current Job", jobLine,
-				compareData != null && ProfileView.JobDrifted(compareData, profile));
 		}
 	}
 }

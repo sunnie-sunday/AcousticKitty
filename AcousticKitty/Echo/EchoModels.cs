@@ -14,8 +14,6 @@ public sealed record PinnedCharacter(
 	string Name,
 	uint HomeWorldId,
 	string AvatarUrlHash,
-	uint? JobId,
-	int Level,
 	ulong? FreeCompanyId,
 	string? FreeCompanyName);
 
@@ -36,11 +34,6 @@ internal sealed class PinRow
 
 	[NotNull]
 	public string AvatarUrlHash { get; set; } = string.Empty;
-
-	[NotNull]
-	public string Job { get; set; } = string.Empty;
-
-	public int Level { get; set; }
 
 	public long? FreeCompanyId { get; set; }
 

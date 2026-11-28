@@ -53,9 +53,6 @@ internal static class SunnieSundayReport
 			Name = SunnieSundayReport.ReadString(path, fields, "name"),
 			HomeWorld = SunnieSundayReport.ReadString(path, fields, "world"),
 			AvatarUrlHash = SunnieSundayReport.ReadString(path, fields, "avatar"),
-			Job = SunnieSundayReport.ReadString(path, fields, "job"),
-			Level = SunnieSundayReport.ReadNumber<int>(
-				path, SunnieSundayReport.ReadString(path, fields, "level"), "a level"),
 			FreeCompanyId =
 				SunnieSundayReport.ReadOptionalString(path, fields, "fc_lodestone_id") is { } fcId
 					? unchecked((long)SunnieSundayReport.ReadNumber<ulong>(

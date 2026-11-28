@@ -67,14 +67,14 @@ Comparing the data used by **Echo**'s plugin and the **EchoVault** website:
 | **Identity**                |                     |                |
 | Lodestone ID                | ⚠️                  | ⚠️             |
 | Name                        | ✅                  | ✅             |
-| Title                       | ✅                  | ✅             |
+| Title                       | ✅                  | —              |
 | Home World                  | ✅                  | ✅             |
 | **Appearance & Backstory**  |                     |                |
 | Avatar                      | 👀                  | 👀             |
 | Portrait                    | 👀                  | —              |
 | Race                        | 👀                  | —              |
 | Clan/Tribe                  | 👀                  | —              |
-| Gender (♂/♀)                | 👀                  | 👀             |
+| Gender (♂/♀)                | 👀                  | —              |
 | Nameday                     | ✅                  | —              |
 | Guardian                    | ✅                  | —              |
 | City-state                  | ✅                  | —              |
@@ -85,8 +85,8 @@ Comparing the data used by **Echo**'s plugin and the **EchoVault** website:
 | Free Company name           | ✅                  | ✅             |
 | Free Company ID             | ✅                  | ✅             |
 | **Class/Job**               |                     |                |
-| Active class/job            | ✅                  | ✅             |
-| Current level               | ✅                  | ✅             |
+| Active class/job            | ✅                  | —              |
+| Current level               | ✅                  | —              |
 | All class/job levels        | ✅                  | —              |
 | **Collections & Activity**  |                     |                |
 | Minions                     | ✅                  | —              |
