@@ -156,6 +156,7 @@ public sealed class ProfileRefresh
 			var profile = await this.client
 				.GetProfileAsync(pin.LodestoneId, this.dataManager, cancellationToken)
 				.ConfigureAwait(false);
+			this.RecordRenameIfChanged(pin, profile);
 			this.Save(pin, profile);
 			this.UpdateRowState(pin, NearbyLookupState.Found);
 		}
@@ -205,6 +206,24 @@ public sealed class ProfileRefresh
 			this.characterDirectory.SetLookupResult(
 				known.Data.ContentId, pin.LodestoneId, state, null);
 		}
+	}
+
+	private void RecordRenameIfChanged(PinnedCharacter pin, LodestoneProfile profile)
+	{
+		if (this.TryGetPinRow(pin) is not { } known || known.Data.ContentId != pin.ContentId ||
+			(known.Data.Name == profile.Name && known.Data.HomeWorldId == profile.HomeWorldId))
+		{
+			return;
+		}
+
+		CharacterTransferRecorder.Record(
+			this.characterDirectory, this.lodestoneCache, this.dataManager,
+			known.Data.ContentId, known.Data.Name, known.Data.HomeWorldId, known.LastSeenUtc,
+			profile.Name, profile.HomeWorldId, pin.LodestoneId);
+		this.characterDirectory.UpdateNameWorld(
+			known.Data.ContentId, profile.Name, profile.HomeWorldId);
+		this.characterDirectory.SetLookupResult(
+			known.Data.ContentId, pin.LodestoneId, NearbyLookupState.Found, null);
 	}
 
 	private KnownCharacter? TryGetPinRow(PinnedCharacter pin) =>
