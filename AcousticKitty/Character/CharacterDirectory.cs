@@ -174,17 +174,18 @@ public sealed partial class CharacterDirectory : IDisposable
 			row.ConsecutiveFailureCount = isRetriableFailure ? row.ConsecutiveFailureCount + 1 : 0;
 
 			row.LodestoneId = lodestoneId.HasValue ? (long)lodestoneId.Value : null;
-			row.LookupState = isRetriableFailure &&
+			var newState = isRetriableFailure &&
 				row.ConsecutiveFailureCount >= MaxConsecutiveLookupFailures
-					? (int)NearbyLookupState.Error
-					: (int)state;
+					? NearbyLookupState.Error
+					: state;
+			row.LookupState = (int)newState;
 			row.LookupErrorMessage = errorMessage;
 			if (priorityAtUtc.HasValue)
 			{
 				row.PriorityAtUtc = UtcTimestamp.Format(priorityAtUtc.Value);
 			}
-			else if (state is NearbyLookupState.NotFound or NearbyLookupState.AccessRestricted
-				or NearbyLookupState.Deleted)
+			else if (newState is NearbyLookupState.NotFound or NearbyLookupState.AccessRestricted
+				or NearbyLookupState.Deleted or NearbyLookupState.Error)
 			{
 				row.PriorityAtUtc =
 					UtcTimestamp.Format(DateTime.UtcNow + CharacterDirectory.RecheckCooldown);
@@ -451,7 +452,8 @@ public sealed partial class CharacterDirectory : IDisposable
 
 	private static bool IsRecheckDue(KnownCharacterRow row, DateTime seenUtc) =>
 		row.LookupState is (int)NearbyLookupState.NotFound
-			or (int)NearbyLookupState.AccessRestricted or (int)NearbyLookupState.Deleted &&
+			or (int)NearbyLookupState.AccessRestricted or (int)NearbyLookupState.Deleted
+			or (int)NearbyLookupState.Error &&
 		(row.PriorityAtUtc == null || UtcTimestamp.Parse(row.PriorityAtUtc) <= seenUtc);
 
 	private static KnownCharacter ToKnownCharacter(KnownCharacterRow row) => new(
