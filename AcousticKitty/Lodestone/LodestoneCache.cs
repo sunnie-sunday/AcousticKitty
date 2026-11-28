@@ -138,17 +138,21 @@ public sealed partial class LodestoneCache : IDisposable
 		row.HomeWorldId = homeWorldId;
 		row.ResolvedAtUtc = UtcTimestamp.Format(resolvedAtUtc);
 		row.AvatarUrlHash = avatarUrlHash ?? row.AvatarUrlHash;
+		var freeCompanyOnWorld = freeCompanyId is not { } incomingId ||
+			FreeCompanyIds.HomeWorldId(incomingId) == homeWorldId;
 		if (freeCompanyKnown && freeCompanyId == null)
 		{
 			row.FreeCompanyId = null;
 			row.FreeCompanyName = null;
 		}
-		else
+		else if (freeCompanyOnWorld)
 		{
 			row.FreeCompanyId =
 				freeCompanyId.HasValue ? (long)freeCompanyId.Value : row.FreeCompanyId;
 			row.FreeCompanyName = freeCompanyName ?? row.FreeCompanyName;
 		}
+
+		LodestoneCache.ClearFreeCompanyIfOffWorld(row, homeWorldId);
 
 		if (existing == null)
 		{
@@ -157,6 +161,16 @@ public sealed partial class LodestoneCache : IDisposable
 		else
 		{
 			this.connection.Update(row);
+		}
+	}
+
+	private static void ClearFreeCompanyIfOffWorld(ResolvedCharacterRow row, uint homeWorldId)
+	{
+		if (row.FreeCompanyId is { } freeCompanyId &&
+			FreeCompanyIds.HomeWorldId((ulong)freeCompanyId) != homeWorldId)
+		{
+			row.FreeCompanyId = null;
+			row.FreeCompanyName = null;
 		}
 	}
 
@@ -177,6 +191,7 @@ public sealed partial class LodestoneCache : IDisposable
 					row.Key = newKey;
 					row.Name = newName;
 					row.HomeWorldId = newHomeWorldId;
+					LodestoneCache.ClearFreeCompanyIfOffWorld(row, newHomeWorldId);
 				});
 			KeyedRowMigration.Migrate<CachedProfileRow>(
 				this.connection, oldKey, newKey,

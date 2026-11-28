@@ -576,8 +576,10 @@ public sealed partial class NearbyCharactersService : IDisposable
 
 			this.lodestoneCache.SaveResolvedId(
 				cacheKey, lodestoneId.Value, known.Data.Name, known.Data.HomeWorldId, DateTime.UtcNow,
-				searchEntry?.AvatarUrlHash, searchEntry?.FreeCompanyId, searchEntry?.FreeCompanyName,
-				freeCompanyKnown: searchEntry != null);
+				searchEntry?.AvatarUrlHash ?? profile?.AvatarUrlHash,
+				searchEntry?.FreeCompanyId ?? profile?.FreeCompanyId,
+				searchEntry?.FreeCompanyName ?? profile?.FreeCompanyName,
+				freeCompanyKnown: searchEntry != null || profile is { IsPartiallyPrivate: false });
 
 			this.characterDirectory.SetLookupResult(
 				contentId, lodestoneId,
