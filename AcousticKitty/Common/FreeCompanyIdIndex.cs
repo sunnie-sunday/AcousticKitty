@@ -50,7 +50,8 @@ public sealed class FreeCompanyIdIndex
 	public bool Record(
 		string? freeCompanyTag, uint homeWorldId, ulong? freeCompanyId, string? freeCompanyName)
 	{
-		if (string.IsNullOrEmpty(freeCompanyTag) || freeCompanyId is not { } id || freeCompanyName == null)
+		if (string.IsNullOrEmpty(freeCompanyTag) || freeCompanyId is not { } id ||
+			freeCompanyName == null || FreeCompanyIds.HomeWorldId(id) != homeWorldId)
 		{
 			return false;
 		}

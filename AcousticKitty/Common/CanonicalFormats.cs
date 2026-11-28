@@ -16,6 +16,11 @@ internal static class CharacterKey
 	public static string Build(string name, uint homeWorldId) => $"{name}@{homeWorldId}";
 }
 
+internal static class FreeCompanyIds
+{
+	public static uint HomeWorldId(ulong freeCompanyId) => (uint)((freeCompanyId >> 47) & 0xFFFF);
+}
+
 internal static class CustomizeEncoding
 {
 	public static string Encode(byte[] customize) => Convert.ToBase64String(customize);
