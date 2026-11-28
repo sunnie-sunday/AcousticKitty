@@ -321,7 +321,8 @@ public sealed partial class CharacterDirectory : IDisposable
 	public IReadOnlyList<KnownCharacter> GetAllWithFreeCompanyTag() =>
 		this.Read<IReadOnlyList<KnownCharacter>>(
 			() => this.connection.Table<KnownCharacterRow>()
-				.Where(row => row.FreeCompanyTag != null && row.FreeCompanyTag != "")
+				.Where(row => row.FreeCompanyTag != null && row.FreeCompanyTag != "" &&
+					row.LookupState != (int)NearbyLookupState.Transferred)
 				.Select(ToKnownCharacter)
 				.ToArray(),
 			Array.Empty<KnownCharacter>());
@@ -411,6 +412,8 @@ public sealed partial class CharacterDirectory : IDisposable
 		ulong contentId, string nameWorldKey, PlayerLocalData data, DateTime lastSeenUtc)
 	{
 		var existing = this.connection.Find<KnownCharacterRow>((long)contentId);
+		var isBackFromTransfer = existing is { LookupState: (int)NearbyLookupState.Transferred } &&
+			existing.NameWorldKey != nameWorldKey;
 		var row = existing ?? new KnownCharacterRow
 		{
 			ContentId = (long)contentId,
@@ -429,7 +432,8 @@ public sealed partial class CharacterDirectory : IDisposable
 		row.Customize = data.Customize;
 		row.LastSeenUtc = UtcTimestamp.Format(lastSeenUtc);
 
-		if (existing != null && CharacterDirectory.IsRecheckDue(existing, lastSeenUtc))
+		if (isBackFromTransfer ||
+			(existing != null && CharacterDirectory.IsRecheckDue(existing, lastSeenUtc)))
 		{
 			row.LookupState = (int)NearbyLookupState.Pending;
 			row.PriorityAtUtc = null;

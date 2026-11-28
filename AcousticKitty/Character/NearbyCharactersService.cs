@@ -332,24 +332,17 @@ public sealed partial class NearbyCharactersService : IDisposable
 			return;
 		}
 
-		var priorIsPinned =
-			this.echoList.IsPinned(priorHolder.Data.ContentId, priorHolder.LodestoneId);
-		if (priorIsPinned)
+		if (priorHolder.LodestoneId is { } priorLodestoneId &&
+			this.echoList.IsPinned(priorHolder.Data.ContentId, priorLodestoneId))
 		{
-			if (priorHolder.LodestoneId is { } priorLodestoneId)
-			{
-				this.lodestoneCache.SavePinnedProfileSnapshot(
-					priorLodestoneId, nameWorldKey,
-					priorHolder.LookupState == NearbyLookupState.AccessRestricted);
-			}
+			this.lodestoneCache.SavePinnedProfileSnapshot(
+				priorLodestoneId, nameWorldKey,
+				priorHolder.LookupState == NearbyLookupState.AccessRestricted);
+		}
 
-			this.characterDirectory.SetLookupResult(
-				priorHolder.Data.ContentId, priorHolder.LodestoneId, NearbyLookupState.Transferred, null);
-		}
-		else
-		{
-			this.characterDirectory.DeleteMany(new[] { priorHolder.Data.ContentId });
-		}
+		this.characterDirectory.SetLookupResult(
+			priorHolder.Data.ContentId, priorHolder.LodestoneId, NearbyLookupState.Transferred,
+			null, clearOverride: false);
 
 		if (this.characterDirectory.TryGetByContentId(data.ContentId)?.LodestoneId != null)
 		{
