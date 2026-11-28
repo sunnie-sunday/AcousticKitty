@@ -85,14 +85,11 @@ internal static class PagedList
 		IReadOnlyList<T> pageItems,
 		string emptyMessage,
 		Action<T> drawItem,
-		Action? drawPinnedRows = null,
 		bool virtualizeUniformRows = false)
 	{
 		var footerHeight = ImGui.GetFrameHeightWithSpacing();
 		using (ImRaii.Child(childId, new Vector2(0, -footerHeight), true))
 		{
-			drawPinnedRows?.Invoke();
-
 			if (filteredCount == 0)
 			{
 				ImGui.TextWrapped(emptyMessage);
